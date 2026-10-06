@@ -75,8 +75,8 @@ async function usar(f) {
 
 // ---------- camadas ----------
 function addTexto(dados = {}) {
-  const l = { id: 't' + ++uid, tipo: 'texto', vis: true, txt: 'SEU TÍTULO', fonte: 0, tam: 16, cor: '#ffe600', borda: '#000000', bw: 16, x: 0.5, y: 0.82, box: null, ...dados };
-  return l;
+  return { id: 't' + ++uid, tipo: 'texto', vis: true, txt: 'SEU TÍTULO', fonte: 0, tam: 115, cor: '#ffe600', borda: '#000000', bw: 16, bb: 0, sh: true,
+    b: false, i: false, u: false, s: false, caps: false, al: 'c', ls: 0, lh: 1.08, op: 100, x: 0.5, y: 0.82, box: null, ...dados };
 }
 function listar() {
   const ul = $('lista'); ul.replaceChildren();
@@ -92,13 +92,25 @@ function listar() {
   const fx = mk('li', 'item fixo'); const b = mk('button', 'nome', 'Fundo'); b.onclick = () => aba('fundo'); fx.append(b); ul.append(fx);
 }
 function selecionar(id) { sel = id; listar(); props(); desenhar(); }
+const TOG = { bB: 'b', bI: 'i', bU: 'u', bS: 's', bCaps: 'caps' };
+const ALIN = {
+  l: '<svg viewBox="0 0 16 16"><path d="M2 3h12M2 7h8M2 11h10"/></svg>',
+  c: '<svg viewBox="0 0 16 16"><path d="M2 3h12M4 7h8M3 11h10"/></svg>',
+  r: '<svg viewBox="0 0 16 16"><path d="M2 3h12M6 7h8M4 11h10"/></svg>',
+};
 function props() {
   const l = porId(sel), t = l?.tipo === 'texto', i = camadas.indexOf(l);
   $('p-sujeito').classList.toggle('hidden', t); $('p-texto').classList.toggle('hidden', !t);
+  $('barraTexto').classList.toggle('hidden', !t);
   $('subir').disabled = !l || i >= camadas.length - 1; $('descer').disabled = !l || i <= 0;
   $('dup').disabled = $('del').disabled = !t;
-  if (!t) return;
-  $('txt').value = l.txt; $('tam').value = l.tam; $('tc').value = l.cor; $('tb').value = l.borda; $('bw').value = l.bw;
+  if (!t) { fechar(); return; }
+  Object.entries({ txt: l.txt, tam: Math.round(l.tam), tc: l.cor, tb: l.borda, bw: l.bw, bb: l.bb, ls: l.ls, lh: l.lh, op: l.op }).forEach(([k, v]) => ($(k).value = v));
+  $('ts').checked = l.sh; $('barraCor').style.background = l.cor;
+  const f = FONTES[l.fonte], bf = $('bFonte');
+  bf.textContent = f[0]; bf.style.fontFamily = `"${f[0]}"`;
+  Object.entries(TOG).forEach(([id, k]) => $(id).setAttribute('aria-pressed', !!l[k]));
+  $('bAlin').innerHTML = ALIN[l.al];
   document.querySelectorAll('.chip').forEach((c, n) => c.setAttribute('aria-pressed', n === l.fonte));
   const k = camadas.findIndex((c) => c.tipo === 'sujeito');
   $('pAtras').setAttribute('aria-pressed', i < k); $('pFrente').setAttribute('aria-pressed', i > k);
@@ -125,14 +137,45 @@ $('dup').onclick = () => {
 $('del').onclick = () => { const l = porId(sel); if (l?.tipo !== 'texto') return; camadas = camadas.filter((c) => c !== l); selecionar('s'); };
 $('pAtras').onclick = () => posRel(false);
 $('pFrente').onclick = () => posRel(true);
-['txt', 'tam', 'tc', 'tb', 'bw'].forEach((id) => $(id).addEventListener('input', () => {
-  const l = porId(sel); if (l?.tipo !== 'texto') return;
-  Object.assign(l, { txt: $('txt').value, tam: +$('tam').value, cor: $('tc').value, borda: $('tb').value, bw: +$('bw').value });
-  listar(); desenhar();
+// ---------- barra de formatação do texto ----------
+const txtAtual = () => { const l = porId(sel); return l?.tipo === 'texto' ? l : null; };
+function aplicarTexto() {
+  const l = txtAtual(); if (!l) return;
+  Object.assign(l, { txt: $('txt').value, tam: Math.min(600, Math.max(10, +$('tam').value || l.tam)), cor: $('tc').value, borda: $('tb').value,
+    bw: +$('bw').value, bb: +$('bb').value, sh: $('ts').checked, ls: +$('ls').value, lh: +$('lh').value, op: +$('op').value });
+  $('barraCor').style.background = l.cor; listar(); desenhar();
+}
+['txt', 'tam', 'tc', 'tb', 'bw', 'bb', 'ts', 'ls', 'lh', 'op'].forEach((id) => $(id).addEventListener('input', aplicarTexto));
+[['tMenos', -5], ['tMais', 5]].forEach(([id, d]) => ($(id).onclick = () => {
+  const l = txtAtual(); if (!l) return;
+  l.tam = Math.min(600, Math.max(10, Math.round(l.tam) + d)); $('tam').value = l.tam; desenhar();
+}));
+Object.entries(TOG).forEach(([id, k]) => ($(id).onclick = () => { const l = txtAtual(); if (l) { l[k] = !l[k]; props(); desenhar(); } }));
+$('bAlin').onclick = () => { const l = txtAtual(); if (l) { l.al = { l: 'c', c: 'r', r: 'l' }[l.al]; props(); desenhar(); } };
+function fechar() { $('pop').classList.add('hidden'); document.querySelectorAll('[data-abre]').forEach((b) => b.setAttribute('aria-expanded', 'false')); }
+function abrir(n) {
+  const p = $('pop'), igual = !p.classList.contains('hidden') && p.dataset.aberto === n;
+  fechar(); if (igual) return;
+  document.querySelectorAll('[data-pop]').forEach((e) => e.classList.toggle('hidden', e.dataset.pop !== n));
+  p.dataset.aberto = n; p.classList.remove('hidden');
+  document.querySelectorAll('[data-abre]').forEach((b) => b.setAttribute('aria-expanded', b.dataset.abre === n));
+}
+document.querySelectorAll('[data-abre]').forEach((b) => (b.onclick = () => abrir(b.dataset.abre)));
+$('fechaPop').onclick = fechar;
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#barraWrap')) fechar(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(); });
+$('oFrente').onclick = () => ordenar(1);
+$('oTras').onclick = () => ordenar(-1);
+document.querySelectorAll('[data-al]').forEach((b) => (b.onclick = () => { // alinhar o texto na imagem
+  const l = txtAtual(); if (!l?.box) return;
+  const bw = l.box.w / tela.width / 2, bh = l.box.h / tela.height / 2, m = 0.03, a = b.dataset.al;
+  if (a === 'esq') l.x = bw + m; if (a === 'cen') l.x = 0.5; if (a === 'dir') l.x = 1 - bw - m;
+  if (a === 'topo') l.y = bh + m; if (a === 'meio') l.y = 0.5; if (a === 'base') l.y = 1 - bh - m;
+  desenhar();
 }));
 FONTES.forEach((f, i) => {
   const b = mk('button', 'chip', f[0]); b.style.fontFamily = `"${f[0]}"`; b.style.fontWeight = f[1]; b.setAttribute('aria-pressed', 'false');
-  b.onclick = () => { const l = porId(sel); if (l?.tipo === 'texto') { l.fonte = i; props(); desenhar(); } };
+  b.onclick = () => { const l = porId(sel); if (l?.tipo === 'texto') { l.fonte = i; props(); desenhar(); fechar(); } };
   $('fontes').append(b);
 });
 Promise.all(FONTES.map((f) => document.fonts.load(fnt(f, 32)))).then(desenhar);
@@ -343,8 +386,9 @@ function pintarFundo(ctx, W, H, u, filtro) {
   }
   const img = tipoFundo === 'imagem' ? imgFundo : origCv;
   if (!img) return;
-  const k = Math.max(W / img.width, H / img.height) * (tipoFundo === 'desfocado' ? 1.12 : 1);
-  ctx.filter = (tipoFundo === 'desfocado' ? `blur(${22 * u}px) ` : '') + filtro;
+  const bl = parseFloat($('bl').value) * u;
+  const k = Math.max(W / img.width, H / img.height) * (1 + Math.min(0.25, bl / u * 0.005));
+  ctx.filter = (bl > 0 ? `blur(${bl}px) ` : '') + filtro;
   ctx.drawImage(img, (W - img.width * k) / 2, (H - img.height * k) / 2, img.width * k, img.height * k);
   ctx.filter = 'none';
 }
@@ -376,8 +420,9 @@ function sujeito(ctx, W, H, u, filtro) {
     o.globalCompositeOperation = 'source-over'; o.clearRect(0, 0, W, H);
     for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2; o.drawImage(L, Math.cos(a) * r, Math.sin(a) * r); }
     o.globalCompositeOperation = 'source-in'; o.fillStyle = $('cc').value; o.fillRect(0, 0, W, H);
-    sombra(ctx, u); ctx.drawImage(O, 0, 0);
-    ctx.shadowColor = 'transparent';
+    const cb = parseFloat($('cb').value) * u;
+    sombra(ctx, u); ctx.filter = cb > 0 ? `blur(${cb}px)` : 'none'; ctx.drawImage(O, 0, 0);
+    ctx.filter = 'none'; ctx.shadowColor = 'transparent';
   } else sombra(ctx, u);
   ctx.filter = filtro; ctx.drawImage(L, 0, 0);
   ctx.restore();
@@ -385,36 +430,42 @@ function sujeito(ctx, W, H, u, filtro) {
 
 function texto(ctx, W, H, u, l) {
   l.box = null;
-  const linhas = l.txt.split('\n').filter((s) => s.trim());
+  const linhas = (l.caps ? l.txt.toUpperCase() : l.txt).split('\n').filter((s) => s.trim());
   if (!linhas.length) return;
-  const tam = (H * l.tam) / 100, lh = tam * 1.08;
+  const e = H / 720, tam = l.tam * e, lh = tam * l.lh, f = FONTES[l.fonte];
   ctx.save();
-  ctx.font = fnt(FONTES[l.fonte], tam);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  const x = l.x * W, y0 = l.y * H - ((linhas.length - 1) * lh) / 2;
-  let maior = 0;
+  ctx.globalAlpha = l.op / 100;
+  ctx.font = `${l.i ? 'italic ' : ''}${l.b ? Math.max(700, f[1]) : f[1]} ${tam}px "${f[0]}", Impact, sans-serif`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${l.ls * e}px`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  const larg = linhas.map((s) => ctx.measureText(s).width), maior = Math.max(...larg);
+  const x0 = l.x * W - maior / 2, y0 = l.y * H - ((linhas.length - 1) * lh) / 2;
+  const sombraOn = () => { if (l.sh) { ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10 * u; ctx.shadowOffsetY = 4 * u; } };
   linhas.forEach((s, i) => {
-    maior = Math.max(maior, ctx.measureText(s).width);
-    if (l.bw > 0) {
+    const x = l.al === 'l' ? x0 : l.al === 'r' ? x0 + maior - larg[i] : x0 + (maior - larg[i]) / 2, y = y0 + i * lh;
+    if (l.bw > 0) { // contorno do texto, com desfoque opcional
       ctx.lineWidth = (tam * l.bw) / 100; ctx.strokeStyle = l.borda;
-      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10 * u; ctx.shadowOffsetY = 4 * u;
-      ctx.strokeText(s, x, y0 + i * lh);
-    }
-    ctx.shadowColor = 'transparent'; ctx.fillStyle = l.cor; ctx.fillText(s, x, y0 + i * lh);
+      ctx.filter = l.bb > 0 ? `blur(${l.bb * u}px)` : 'none'; sombraOn();
+      ctx.strokeText(s, x, y); ctx.filter = 'none'; ctx.shadowColor = 'transparent';
+    } else sombraOn();
+    ctx.fillStyle = l.cor; ctx.fillText(s, x, y); ctx.shadowColor = 'transparent';
+    const fio = Math.max(1, tam * 0.06);
+    if (l.u) ctx.fillRect(x, y + tam * 0.36, larg[i], fio);
+    if (l.s) ctx.fillRect(x, y - fio / 2, larg[i], fio);
   });
   ctx.restore();
-  l.box = { x: x - maior / 2, y: y0 - lh / 2, w: maior, h: lh * linhas.length };
+  l.box = { x: x0, y: y0 - lh / 2, w: maior, h: lh * linhas.length };
 }
 
 // ---------- controles do sujeito, fundo e cor ----------
-['esc', 'cw', 'cc', 'cs', 'g1', 'g2', 'br', 'ct', 'sa', 'res', 'ajuste'].forEach((id) => $(id).addEventListener('input', desenhar));
+['esc', 'cw', 'cb', 'bl', 'cc', 'cs', 'g1', 'g2', 'br', 'ct', 'sa', 'res', 'ajuste'].forEach((id) => $(id).addEventListener('input', desenhar));
 $('trim').addEventListener('input', () => { if (edit) caixa = achar(edit); desenhar(); });
 document.querySelectorAll('[data-pos]').forEach((b) => (b.onclick = () => { offX = parseFloat(b.dataset.pos); offY = 0; desenhar(); }));
 $('espelhar').onclick = () => { espelhado = !espelhado; $('espelhar').setAttribute('aria-pressed', espelhado); desenhar(); };
 $('vida').onclick = () => { $('br').value = 105; $('ct').value = 112; $('sa').value = 130; desenhar(); };
 $('gchk').onchange = () => $('guia').classList.toggle('hidden', !$('gchk').checked);
-function mostrarFundo() { document.querySelectorAll('[data-f]').forEach((el) => el.classList.toggle('hidden', el.dataset.f !== tipoFundo)); }
-$('tfundo').addEventListener('input', () => { tipoFundo = $('tfundo').value; mostrarFundo(); desenhar(); });
+function mostrarFundo() { document.querySelectorAll('[data-f]').forEach((el) => el.classList.toggle('hidden', !el.dataset.f.split(' ').includes(tipoFundo))); }
+$('tfundo').addEventListener('input', () => { tipoFundo = $('tfundo').value; $('bl').value = tipoFundo === 'desfocado' ? 22 : 0; mostrarFundo(); desenhar(); });
 $('bimg').onclick = () => $('fimg').click();
 $('fimg').onchange = async () => { if ($('fimg').files[0]) { imgFundo = await createImageBitmap($('fimg').files[0]); desenhar(); } };
 mostrarFundo();

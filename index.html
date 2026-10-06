@@ -93,6 +93,27 @@
            background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:10px; font-size:.9rem; z-index:50; }
   footer { margin-top:24px; color:var(--muted); font-size:.85rem; max-width:70ch; }
 
+  .barraWrap { position:relative; margin-bottom:8px; }
+  .barra { display:flex; gap:6px; align-items:center; overflow-x:auto; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; scrollbar-width:none; }
+  .barra > * { flex:none; }
+  .barra button { white-space:nowrap; }
+  .b-fonte { min-width:130px; max-width:170px; overflow:hidden; text-overflow:ellipsis; text-align:left; }
+  .step { display:flex; align-items:center; border:1px solid var(--line); border-radius:8px; }
+  .step button { border:0; background:none; min-width:38px; padding:8px; }
+  .step input { width:58px; border:0; background:none; color:var(--ink); font:inherit; text-align:center; min-height:38px; -moz-appearance:textfield; }
+  .corA { position:relative; display:grid; place-items:center; width:44px; min-height:40px; border:1px solid var(--line); border-radius:8px; cursor:pointer; }
+  .corA b { font-size:1.15rem; line-height:1; margin-top:-5px; } .corA i { position:absolute; bottom:7px; left:11px; right:11px; height:4px; border-radius:2px; background:#ffe600; }
+  .corA input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; }
+  .tg { min-width:40px; padding:8px 10px; } .tg[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .tg svg { width:18px; height:18px; display:block; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
+  .pop { position:fixed; left:0; right:0; bottom:0; z-index:40; max-height:55vh; overflow:auto; display:grid; gap:12px; background:var(--panel);
+         border-top:1px solid var(--line); padding:14px 16px max(16px, env(safe-area-inset-bottom)); box-shadow:0 -10px 30px #0004; border-radius:16px 16px 0 0; }
+  .pop h3 { margin:4px 0 0; font-size:.8rem; font-weight:600; color:var(--muted); }
+  .pop .seg { margin-top:0; } .fechar { justify-self:end; }
+  @media (min-width:960px) {
+    .pop { position:absolute; left:0; right:auto; bottom:auto; top:calc(100% + 6px); width:380px; max-height:60vh; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px #0004; padding:14px; }
+    .fechar { display:none; }
+  }
   @media (min-width:960px) {
     .app { grid-template-columns:minmax(0,1fr) 400px; align-items:start; }
     .palco { top:74px; }
@@ -124,6 +145,53 @@
 
   <div class="app hidden" id="app">
     <div class="palco">
+      <div class="barraWrap" id="barraWrap">
+        <div class="barra hidden" id="barraTexto" role="toolbar" aria-label="Formatação do texto">
+          <button id="bFonte" class="b-fonte" data-abre="fonte" aria-expanded="false" title="Fonte">Anton</button>
+          <div class="step">
+            <button id="tMenos" aria-label="Diminuir fonte">−</button>
+            <input id="tam" type="number" min="10" max="600" inputmode="numeric" aria-label="Tamanho da fonte">
+            <button id="tMais" aria-label="Aumentar fonte">+</button>
+          </div>
+          <label class="corA" title="Cor do texto"><b>A</b><i id="barraCor"></i><input type="color" id="tc" aria-label="Cor do texto"></label>
+          <button id="bB" class="tg" aria-pressed="false" title="Negrito"><b>B</b></button>
+          <button id="bI" class="tg" aria-pressed="false" title="Itálico"><i>I</i></button>
+          <button id="bU" class="tg" aria-pressed="false" title="Sublinhado"><u>U</u></button>
+          <button id="bS" class="tg" aria-pressed="false" title="Tachado"><s>S</s></button>
+          <button id="bCaps" class="tg" aria-pressed="false" title="Maiúsculas">aA</button>
+          <button id="bAlin" class="tg" title="Alinhamento do texto" aria-label="Alinhamento do texto"></button>
+          <button data-abre="espaco" aria-expanded="false">Espaçamento</button>
+          <button data-abre="opac" aria-expanded="false">Opacidade</button>
+          <button data-abre="efeitos" aria-expanded="false">Efeitos</button>
+          <button data-abre="pos" aria-expanded="false">Posição</button>
+        </div>
+        <div class="pop hidden" id="pop">
+          <button id="fechaPop" class="fechar">Fechar</button>
+          <div data-pop="fonte"><div class="chips" id="fontes" role="group" aria-label="Fonte"></div></div>
+          <div data-pop="espaco" class="hidden">
+            <label class="campo">Espaço entre letras <input type="range" id="ls" min="-10" max="60" value="0"></label>
+            <label class="campo">Espaço entre linhas <input type="range" id="lh" min="0.8" max="2" step="0.05" value="1.08"></label>
+          </div>
+          <div data-pop="opac" class="hidden">
+            <label class="campo">Opacidade <input type="range" id="op" min="0" max="100" value="100"></label>
+          </div>
+          <div data-pop="efeitos" class="hidden">
+            <h3>Contorno</h3>
+            <div class="linha"><label class="campo">Cor <input type="color" id="tb" value="#000000"></label>
+              <label class="campo">Espessura <input type="range" id="bw" min="0" max="30" value="16"></label></div>
+            <label class="campo">Desfoque do contorno <input type="range" id="bb" min="0" max="40" value="0"></label>
+            <label class="chk"><input type="checkbox" id="ts" checked> Sombra</label>
+          </div>
+          <div data-pop="pos" class="hidden">
+            <h3>Ordem das camadas</h3>
+            <div class="seg"><button id="oTras">▼ Para trás</button><button id="oFrente">▲ Para frente</button></div>
+            <div class="seg"><button id="pAtras">Atrás do sujeito</button><button id="pFrente">Na frente do sujeito</button></div>
+            <h3>Alinhar na imagem</h3>
+            <div class="seg"><button data-al="esq">Esquerda</button><button data-al="cen">Centro</button><button data-al="dir">Direita</button></div>
+            <div class="seg"><button data-al="topo">Topo</button><button data-al="meio">Meio</button><button data-al="base">Base</button></div>
+          </div>
+        </div>
+      </div>
       <div class="stage checker" id="stage">
         <canvas id="tela" aria-label="Prévia da thumbnail em 16:9"></canvas>
         <div id="guia" class="hidden"></div>
@@ -169,6 +237,7 @@
             <select id="ajuste"><option value="contain" selected>Mostrar inteiro</option><option value="cover">Preencher o quadro</option></select>
           </label>
           <label class="campo">Contorno <input type="range" id="cw" min="0" max="40" value="10"></label>
+          <label class="campo">Desfoque do contorno <input type="range" id="cb" min="0" max="40" value="0"></label>
           <div class="linha">
             <input type="color" id="cc" value="#ffffff" aria-label="Cor do contorno">
             <label class="chk"><input type="checkbox" id="cs" checked> Sombra</label>
@@ -177,17 +246,8 @@
 
         <div class="grupo hidden" id="p-texto">
           <h3>Texto</h3>
-          <textarea id="txt" rows="2" placeholder="Digite o título (Enter quebra a linha)"></textarea>
-          <div class="chips" id="fontes" role="group" aria-label="Fonte"></div>
-          <label class="campo">Tamanho <input type="range" id="tam" min="6" max="40" value="16"></label>
-          <div class="linha">
-            <label class="campo">Cor <input type="color" id="tc" value="#ffe600"></label>
-            <label class="campo">Borda <input type="color" id="tb" value="#000000"></label>
-            <label class="campo">Espessura <input type="range" id="bw" min="0" max="30" value="16"></label>
-          </div>
-          <div class="seg" role="group" aria-label="Posição em relação ao sujeito">
-            <button id="pAtras">Atrás do sujeito</button><button id="pFrente">Na frente do sujeito</button>
-          </div>
+          <textarea id="txt" rows="3" placeholder="Digite o título (Enter quebra a linha)"></textarea>
+          <p class="dica">Fonte, tamanho, cor, efeitos e posição ficam na barra acima da imagem.</p>
         </div>
       </div>
 
@@ -203,6 +263,7 @@
         </div>
         <div class="linha hidden" data-f="degrade"><input type="color" id="g1" value="#ff2d55" aria-label="Cor inicial"><input type="color" id="g2" value="#2447e0" aria-label="Cor final"></div>
         <div class="hidden" data-f="imagem"><button id="bimg">Escolher imagem</button><input type="file" id="fimg" accept="image/*" class="hidden"></div>
+        <label class="campo hidden" data-f="imagem desfocado">Desfoque do fundo <input type="range" id="bl" min="0" max="60" value="22"></label>
       </div>
 
       <div class="corpo hidden" data-p="cor">
