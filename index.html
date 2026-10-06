@@ -43,6 +43,11 @@
   .sw.none { background:repeating-conic-gradient(#fff 0% 25%,#cfd4dc 0% 50%) 0 0/10px 10px; }
   input[type=color] { width:36px; height:30px; padding:0; border:1px solid var(--line); border-radius:8px; background:none; }
   #erro { color:var(--err); min-height:1.5em; margin:12px 0 0; }
+  .tool[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  canvas.editando { cursor:crosshair; touch-action:none; }
+  #anel { position:absolute; pointer-events:none; display:none; border:2px solid #fff; border-radius:50%;
+          box-shadow:0 0 0 1px #000; transform:translate(-50%,-50%); }
+  #dica { margin:10px 0 0; color:var(--muted); font-size:.9rem; min-height:1.4em; }
   footer { margin-top:32px; color:var(--muted); font-size:.85rem; max-width:70ch; }
 </style>
 </head>
@@ -61,6 +66,7 @@
   <section id="painel" class="hidden">
     <div class="stage checker" id="stage">
       <canvas id="tela" aria-label="Prévia 16:9"></canvas>
+      <div id="anel"></div>
       <div id="status">Preparando…</div>
     </div>
     <div class="bar">
@@ -88,6 +94,15 @@
       </div>
       <button class="primary" id="baixar" disabled>Baixar PNG</button>
     </div>
+    <div class="bar" role="group" aria-label="Retoque">
+      <button class="tool" data-t="restaurar" aria-pressed="false" disabled>Restaurar parte</button>
+      <button class="tool" data-t="apagar" aria-pressed="false" disabled>Apagar sobra</button>
+      <label>Pincel <input type="range" id="pincel" min="4" max="120" value="30"></label>
+      <button id="desfazer" disabled>Desfazer</button>
+      <button id="manchas" disabled>Remover manchas soltas</button>
+      <button id="espiar" disabled>Segurar para ver o original</button>
+    </div>
+    <p id="dica">Retoque: use “Restaurar parte” para pintar de volta o que foi cortado sem querer e “Apagar sobra” para tirar o que ficou.</p>
   </section>
 
   <footer>Na primeira vez o navegador baixa o modelo de IA (cerca de 170 MB) e o guarda em cache; depois disso abre bem mais rápido. Fotos grandes podem levar alguns segundos, dependendo do seu aparelho.</footer>
