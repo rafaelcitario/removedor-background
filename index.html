@@ -2,146 +2,248 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Removedor de fundo 16:9</title>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bebas+Neue&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thumbnail Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=League+Spartan:wght@900&family=Luckiest+Guy&family=Montserrat:wght@900&family=Oswald:wght@700&family=Passion+One:wght@900&family=Permanent+Marker&family=Poppins:wght@800&family=Russo+One&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#eef1f5; --ink:#151a22; --muted:#5d6675; --line:#d3d9e2; --panel:#fff;
-          --accent:#2447e0; --accent-ink:#fff; --err:#b3261e; --c1:#fff; --c2:#d9dde4; }
+  :root { --bg:#eef1f5; --ink:#151a22; --muted:#5d6675; --line:#d3d9e2; --panel:#fff; --soft:#f3f5f9;
+          --accent:#2447e0; --accent-ink:#fff; --err:#b3261e; --c1:#fff; --c2:#d9dde4; --r:10px; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#12151b; --ink:#eef1f6; --muted:#98a2b3; --line:#2b323d; --panel:#1a1f27;
+    :root { --bg:#0f1218; --ink:#eef1f6; --muted:#98a2b3; --line:#2b323d; --panel:#1a1f27; --soft:#232a35;
             --accent:#6f8bff; --accent-ink:#0b1020; --err:#ff8a80; --c1:#2a303a; --c2:#20252d; }
   }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink);
-         font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-  main { max-width:980px; margin:0 auto; padding:40px 20px 64px; }
-  h1 { font-size:clamp(1.8rem,5vw,2.6rem); line-height:1.1; margin:0 0 8px; letter-spacing:-.02em; }
-  .sub { margin:0 0 24px; color:var(--muted); max-width:56ch; }
-  .drop { display:grid; gap:4px; text-align:center; padding:28px 20px; border:2px dashed var(--line);
-          border-radius:14px; background:var(--panel); cursor:pointer; transition:border-color .15s; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .hidden { display:none !important; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button, select, textarea { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line);
+          border-radius:8px; padding:8px 12px; min-height:40px; }
+  button { cursor:pointer; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button[aria-pressed="true"].toggle, .tool[aria-pressed="true"], .seg button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  input[type=range] { width:100%; accent-color:var(--accent); height:32px; margin:0; }
+  input[type=color] { width:44px; height:40px; padding:2px; border:1px solid var(--line); border-radius:8px; background:none; }
+  @media (pointer:coarse) { button, select { min-height:46px; } input[type=color] { height:46px; width:52px; } }
+
+  .top { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between; gap:12px;
+         padding:10px 16px; padding-top:max(10px, env(safe-area-inset-top)); background:var(--panel); border-bottom:1px solid var(--line); }
+  .marca { font-size:1.05rem; letter-spacing:-.01em; }
+  .acoes-top { display:flex; gap:8px; }
+  main { max-width:1280px; margin:0 auto; padding:16px; }
+
+  #entrada { max-width:640px; margin:6vh auto 0; }
+  h1 { font-size:clamp(1.8rem,6vw,2.8rem); line-height:1.08; margin:0 0 10px; letter-spacing:-.02em; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .drop { display:grid; gap:4px; text-align:center; padding:44px 20px; border:2px dashed var(--line); border-radius:16px;
+          background:var(--panel); cursor:pointer; transition:border-color .15s; }
   .drop:hover,.drop.over,.drop:focus-visible { border-color:var(--accent); outline:none; }
   .drop span { color:var(--muted); font-size:.9rem; }
-  .hidden { display:none !important; }
-  #painel { margin-top:20px; }
-  .stage { position:relative; aspect-ratio:16/9; width:100%; border-radius:12px; overflow:hidden;
-           border:1px solid var(--line); background:var(--panel); }
+  #erro { color:var(--err); min-height:1.4em; margin:8px 0 0; }
+
+  /* editor: palco + painel */
+  .app { display:grid; gap:14px; grid-template-columns:minmax(0,1fr); }
+  .palco { position:sticky; top:58px; z-index:10; background:var(--bg); padding:6px 0; padding-top:6px; }
+  .stage { position:relative; aspect-ratio:16/9; width:100%; border-radius:12px; overflow:hidden; border:1px solid var(--line); background:var(--panel); }
   .stage.checker { background:repeating-conic-gradient(var(--c1) 0% 25%,var(--c2) 0% 50%) 0 0/20px 20px; }
-  canvas { width:100%; height:100%; display:block; }
-  #status { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:16px;
-            font-weight:600; background:color-mix(in srgb,var(--bg) 82%,transparent); }
-  .bar { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin-top:16px; }
-  .bar label { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:.9rem; }
-  select,button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line);
-                  border-radius:8px; padding:8px 12px; }
-  button { cursor:pointer; }
-  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .swatches { display:flex; gap:8px; align-items:center; }
-  .sw { width:28px; height:28px; border-radius:50%; border:2px solid var(--line); padding:0; }
+  canvas { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+  canvas.editando { cursor:crosshair; }
+  #status { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:16px; font-weight:600;
+            background:color-mix(in srgb,var(--bg) 82%,transparent); }
+  #selecao { position:absolute; display:none; pointer-events:none; border:2px solid var(--accent); box-shadow:0 0 0 1px #fff9; border-radius:4px; }
+  #guia { position:absolute; right:1.2%; bottom:2.5%; width:13%; height:8%; border:2px dashed #ff4d4d; background:#ff000022; pointer-events:none; }
+  #anel { position:absolute; pointer-events:none; display:none; border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px #000; transform:translate(-50%,-50%); }
+
+  .painel { background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; min-width:0; }
+  .tabs { display:flex; overflow-x:auto; border-bottom:1px solid var(--line); background:var(--soft); scrollbar-width:none; }
+  .tab { flex:1 0 auto; border:0; border-bottom:3px solid transparent; border-radius:0; background:none; padding:12px 14px; color:var(--muted); font-weight:600; }
+  .tab[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
+  .corpo { padding:14px; display:grid; gap:14px; }
+  .grupo { display:grid; gap:10px; padding-top:14px; border-top:1px solid var(--line); }
+  .grupo:first-child { border-top:0; padding-top:0; }
+  .grupo h3 { margin:0; font-size:.8rem; font-weight:600; color:var(--muted); }
+  .campo { display:grid; gap:4px; font-size:.85rem; color:var(--muted); }
+  .linha { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .linha > .campo { flex:1 1 140px; }
+  .seg { display:flex; } .seg button { flex:1; border-radius:0; margin-left:-1px; } .seg button:first-child { border-radius:8px 0 0 8px; margin:0; } .seg button:last-child { border-radius:0 8px 8px 0; }
+  .chk { display:flex; align-items:center; gap:8px; min-height:40px; font-size:.95rem; color:var(--ink); }
+  .chk input { width:20px; height:20px; accent-color:var(--accent); }
+  textarea { width:100%; resize:vertical; }
+
+  #lista { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+  .item { display:flex; align-items:center; gap:6px; padding:4px; border:1px solid var(--line); border-radius:var(--r); background:var(--soft); }
+  .item[aria-current="true"] { border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent); background:var(--panel); }
+  .item .nome { flex:1; text-align:left; border:0; background:none; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .olho { border:0; background:none; min-width:40px; }
+  .item .olho[aria-pressed="false"] { opacity:.4; }
+  .item.fixo { opacity:.75; }
+  .chips { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:6px; }
+  .chip { font-size:1.05rem; padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); background:var(--soft); }
+
+  .sw { width:40px; height:40px; border-radius:50%; border:2px solid var(--line); padding:0; min-height:0; }
   .sw[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
   .sw.none { background:repeating-conic-gradient(#fff 0% 25%,#cfd4dc 0% 50%) 0 0/10px 10px; }
-  input[type=color] { width:36px; height:30px; padding:0; border:1px solid var(--line); border-radius:8px; background:none; }
-  #erro { color:var(--err); min-height:1.5em; margin:12px 0 0; }
-  .tool[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
-  canvas.editando { cursor:crosshair; touch-action:none; }
-  #anel { position:absolute; pointer-events:none; display:none; border:2px solid #fff; border-radius:50%;
-          box-shadow:0 0 0 1px #000; transform:translate(-50%,-50%); }
-  #dica { margin:10px 0 0; color:var(--muted); font-size:.9rem; min-height:1.4em; }
-  canvas { cursor:grab; }
-  .grupos details { margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px; }
-  summary { cursor:pointer; font-weight:600; }
-  .grupos .bar { margin:12px 0 4px; }
-  textarea { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px; width:260px; }
-  #guia { position:absolute; right:1.2%; bottom:2.5%; width:13%; height:8%; border:2px dashed #ff4d4d; background:#ff000022; pointer-events:none; }
-  .mini { display:flex; align-items:center; gap:14px; margin-top:14px; color:var(--muted); font-size:.85rem; }
-  .mb { position:relative; width:168px; height:94px; flex:none; border-radius:8px; overflow:hidden; }
-  .mb canvas { width:100%; height:100%; display:block; cursor:default; background:#222; }
+  .mini { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:.85rem; }
+  .mb { position:relative; width:168px; height:94px; flex:none; border-radius:8px; overflow:hidden; background:#222; }
+  .mb canvas { cursor:default; }
   .mb i { position:absolute; right:4px; bottom:4px; background:#000c; color:#fff; font:600 11px/1 system-ui; padding:2px 4px; border-radius:3px; }
-  footer { margin-top:32px; color:var(--muted); font-size:.85rem; max-width:70ch; }
+  .dica { margin:0; color:var(--muted); font-size:.85rem; }
+  #aviso { position:fixed; left:50%; bottom:max(16px, env(safe-area-inset-bottom)); transform:translateX(-50%); max-width:min(92vw,520px);
+           background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:10px; font-size:.9rem; z-index:50; }
+  footer { margin-top:24px; color:var(--muted); font-size:.85rem; max-width:70ch; }
+
+  @media (min-width:960px) {
+    .app { grid-template-columns:minmax(0,1fr) 400px; align-items:start; }
+    .palco { top:74px; }
+    .painel { max-height:calc(100vh - 90px); overflow:auto; position:sticky; top:74px; }
+  }
+  @media (max-width:520px) { main { padding:10px; } .corpo { padding:12px; } .mini { flex-direction:column; align-items:flex-start; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>Removedor de fundo 16:9</h1>
-  <p class="sub">Tudo roda no seu navegador: a foto não é enviada a nenhum servidor. Monte a thumbnail em 16:9: recorte, contorno, fundo e texto.</p>
-
-  <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher imagem">
-    <strong>Arraste uma imagem aqui, cole com Ctrl+V ou clique para escolher</strong>
-    <span>JPG, PNG ou WebP. A imagem é usada no tamanho original, sem reduzir.</span>
+<header class="top">
+  <strong class="marca">Thumbnail Studio</strong>
+  <div class="acoes-top">
+    <button id="novo" class="hidden">Nova imagem</button>
+    <button id="baixar" class="primary" disabled>Baixar</button>
   </div>
-  <input type="file" id="file" accept="image/*" class="hidden">
+</header>
+
+<main>
+  <section id="entrada">
+    <h1>Thumbnails para YouTube, direto no navegador</h1>
+    <p class="sub">Remova o fundo, adicione texto por camadas e exporte em 16:9. A foto não sai do seu aparelho.</p>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher imagem">
+      <strong>Toque aqui, arraste uma imagem ou cole com Ctrl+V</strong>
+      <span>JPG, PNG ou WebP. A imagem é usada no tamanho original.</span>
+    </div>
+    <input type="file" id="file" accept="image/*" class="hidden">
+  </section>
   <p id="erro" role="alert"></p>
 
-  <section id="painel" class="hidden">
-    <div class="stage checker" id="stage">
-      <canvas id="tela" aria-label="Prévia 16:9"></canvas>
-      <div id="guia" class="hidden"></div>
-      <div id="anel"></div>
-      <div id="status">Preparando…</div>
+  <div class="app hidden" id="app">
+    <div class="palco">
+      <div class="stage checker" id="stage">
+        <canvas id="tela" aria-label="Prévia da thumbnail em 16:9"></canvas>
+        <div id="guia" class="hidden"></div>
+        <div id="selecao"></div>
+        <div id="anel"></div>
+        <div id="status">Preparando…</div>
+      </div>
     </div>
-    <div class="bar">
-      <label>Tamanho
-        <select id="res"><option value="1280x720" selected>1280×720 (YouTube)</option><option value="1920x1080">1920×1080</option><option value="3840x2160">4K 3840×2160</option></select>
-      </label>
-      <label>Formato <select id="fmt"><option value="jpg" selected>JPG</option><option value="png">PNG</option></select></label>
-      <label><input type="checkbox" id="lim" checked> Limitar a 2 MB</label>
-      <label><input type="checkbox" id="gchk"> Guia do contador</label>
-      <button class="primary" id="baixar" disabled>Baixar thumbnail</button>
-    </div>
-    <div class="mini"><div class="mb"><canvas id="mini" width="336" height="189"></canvas><i>12:34</i></div>
-      <span>Prévia no tamanho de um celular. Arraste o sujeito ou o texto direto na imagem.</span></div>
-    <p id="dica">Retoque: use “Restaurar parte” para pintar de volta o que foi cortado sem querer e “Apagar sobra” para tirar o que ficou.</p>
 
-    <div class="grupos">
-      <details open><summary>Sujeito e contorno</summary><div class="bar">
-        <label>Tamanho <input type="range" id="esc" min="30" max="220" value="100"></label>
-        <button data-pos="-0.22">Esquerda</button><button data-pos="0">Centro</button><button data-pos="0.22">Direita</button>
-        <button id="espelhar" aria-pressed="false">Espelhar</button>
-        <label><input type="checkbox" id="trim" checked> Centralizar no sujeito</label>
-        <label>Enquadramento <select id="ajuste"><option value="contain" selected>Inteiro</option><option value="cover">Preencher</option></select></label>
-        <label>Contorno <input type="range" id="cw" min="0" max="40" value="10"></label>
-        <input type="color" id="cc" value="#ffffff" aria-label="Cor do contorno">
-        <label><input type="checkbox" id="cs" checked> Sombra</label>
-      </div></details>
-      <details open><summary>Fundo</summary><div class="bar">
-        <label>Tipo <select id="tfundo"><option value="cor">Cor ou transparente</option><option value="degrade">Degradê</option><option value="imagem">Imagem</option><option value="desfocado">Foto original desfocada</option></select></label>
-        <div class="swatches" data-f="cor" role="group" aria-label="Cor de fundo">
+    <aside class="painel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="camadas" aria-selected="true">Camadas</button>
+        <button class="tab" role="tab" data-tab="fundo" aria-selected="false">Fundo</button>
+        <button class="tab" role="tab" data-tab="cor" aria-selected="false">Cor</button>
+        <button class="tab" role="tab" data-tab="retoque" aria-selected="false">Retoque</button>
+        <button class="tab" role="tab" data-tab="exportar" aria-selected="false">Exportar</button>
+      </div>
+
+      <div class="corpo" data-p="camadas">
+        <div class="grupo">
+          <div class="linha">
+            <button id="addTxt" class="primary">+ Texto</button>
+            <button id="subir" aria-label="Trazer para frente">▲ Frente</button>
+            <button id="descer" aria-label="Enviar para trás">▼ Trás</button>
+            <button id="dup">Duplicar</button>
+            <button id="del">Excluir</button>
+          </div>
+          <ul id="lista" aria-label="Camadas, da frente para trás"></ul>
+          <p class="dica">Toque ou arraste na imagem para selecionar e mover uma camada. A de cima fica na frente.</p>
+        </div>
+
+        <div class="grupo" id="p-sujeito">
+          <h3>Sujeito</h3>
+          <label class="campo">Tamanho <input type="range" id="esc" min="30" max="220" value="100"></label>
+          <div class="seg" role="group" aria-label="Posição">
+            <button data-pos="-0.22">Esquerda</button><button data-pos="0">Centro</button><button data-pos="0.22">Direita</button>
+          </div>
+          <div class="linha">
+            <button id="espelhar" class="toggle" aria-pressed="false">Espelhar</button>
+            <label class="chk"><input type="checkbox" id="trim" checked> Centralizar no sujeito</label>
+          </div>
+          <label class="campo">Enquadramento
+            <select id="ajuste"><option value="contain" selected>Mostrar inteiro</option><option value="cover">Preencher o quadro</option></select>
+          </label>
+          <label class="campo">Contorno <input type="range" id="cw" min="0" max="40" value="10"></label>
+          <div class="linha">
+            <input type="color" id="cc" value="#ffffff" aria-label="Cor do contorno">
+            <label class="chk"><input type="checkbox" id="cs" checked> Sombra</label>
+          </div>
+        </div>
+
+        <div class="grupo hidden" id="p-texto">
+          <h3>Texto</h3>
+          <textarea id="txt" rows="2" placeholder="Digite o título (Enter quebra a linha)"></textarea>
+          <div class="chips" id="fontes" role="group" aria-label="Fonte"></div>
+          <label class="campo">Tamanho <input type="range" id="tam" min="6" max="40" value="16"></label>
+          <div class="linha">
+            <label class="campo">Cor <input type="color" id="tc" value="#ffe600"></label>
+            <label class="campo">Borda <input type="color" id="tb" value="#000000"></label>
+            <label class="campo">Espessura <input type="range" id="bw" min="0" max="30" value="16"></label>
+          </div>
+          <div class="seg" role="group" aria-label="Posição em relação ao sujeito">
+            <button id="pAtras">Atrás do sujeito</button><button id="pFrente">Na frente do sujeito</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="corpo hidden" data-p="fundo">
+        <label class="campo">Tipo de fundo
+          <select id="tfundo"><option value="cor">Cor ou transparente</option><option value="degrade">Degradê</option><option value="imagem">Imagem</option><option value="desfocado">Foto original desfocada</option></select>
+        </label>
+        <div class="linha" data-f="cor" role="group" aria-label="Cor de fundo">
           <button class="sw none" data-bg="" aria-pressed="true" title="Transparente"></button>
           <button class="sw" data-bg="#ffffff" style="background:#fff" aria-pressed="false" title="Branco"></button>
           <button class="sw" data-bg="#000000" style="background:#000" aria-pressed="false" title="Preto"></button>
           <input type="color" id="cor" value="#2447e0" aria-label="Cor personalizada">
         </div>
-        <span class="swatches hidden" data-f="degrade"><input type="color" id="g1" value="#ff2d55" aria-label="Cor inicial"><input type="color" id="g2" value="#2447e0" aria-label="Cor final"></span>
-        <span class="hidden" data-f="imagem"><button id="bimg">Escolher imagem</button><input type="file" id="fimg" accept="image/*" class="hidden"></span>
-      </div></details>
-      <details><summary>Texto</summary><div class="bar">
-        <textarea id="txt" rows="2" placeholder="Título da thumbnail (Enter quebra a linha)"></textarea>
-        <label>Fonte <select id="fonte"><option value="Anton" selected>Anton</option><option value="'Bebas Neue'">Bebas Neue</option><option value="'Archivo Black'">Archivo Black</option></select></label>
-        <label>Tamanho <input type="range" id="tam" min="6" max="40" value="16"></label>
-        <label>Texto <input type="color" id="tc" value="#ffe600"></label>
-        <label>Borda <input type="color" id="tb" value="#000000"></label>
-      </div></details>
-      <details><summary>Cor e brilho</summary><div class="bar">
-        <label>Brilho <input type="range" id="br" min="50" max="150" value="100"></label>
-        <label>Contraste <input type="range" id="ct" min="50" max="150" value="100"></label>
-        <label>Saturação <input type="range" id="sa" min="50" max="180" value="100"></label>
-        <button id="vida">Dar mais vida</button>
-      </div></details>
-      <details><summary>Retoque do recorte</summary><div class="bar" role="group" aria-label="Retoque">
-        <button class="tool" data-t="restaurar" aria-pressed="false" disabled>Restaurar parte</button>
-        <button class="tool" data-t="apagar" aria-pressed="false" disabled>Apagar sobra</button>
-        <label>Pincel <input type="range" id="pincel" min="4" max="120" value="30"></label>
-        <button id="desfazer" disabled>Desfazer</button>
-        <button id="manchas" disabled>Remover manchas soltas</button>
-        <button id="espiar" disabled>Segurar para ver o original</button>
-      </div></details>
-    </div>
-  </section>
+        <div class="linha hidden" data-f="degrade"><input type="color" id="g1" value="#ff2d55" aria-label="Cor inicial"><input type="color" id="g2" value="#2447e0" aria-label="Cor final"></div>
+        <div class="hidden" data-f="imagem"><button id="bimg">Escolher imagem</button><input type="file" id="fimg" accept="image/*" class="hidden"></div>
+      </div>
 
-  <footer>Na primeira vez o navegador baixa o modelo de IA (cerca de 170 MB) e o guarda em cache; depois disso abre bem mais rápido. Fotos grandes podem levar alguns segundos, dependendo do seu aparelho.</footer>
+      <div class="corpo hidden" data-p="cor">
+        <label class="campo">Brilho <input type="range" id="br" min="50" max="150" value="100"></label>
+        <label class="campo">Contraste <input type="range" id="ct" min="50" max="150" value="100"></label>
+        <label class="campo">Saturação <input type="range" id="sa" min="50" max="180" value="100"></label>
+        <button id="vida">Dar mais vida</button>
+        <p class="dica">Os ajustes valem para o sujeito e para o fundo em imagem. Os textos não são alterados.</p>
+      </div>
+
+      <div class="corpo hidden" data-p="retoque">
+        <p class="dica">Corrija o recorte: pinte de volta o que foi cortado sem querer ou apague o que sobrou.</p>
+        <div class="seg" role="group" aria-label="Ferramenta">
+          <button class="tool" data-t="restaurar" aria-pressed="false" disabled>Restaurar</button>
+          <button class="tool" data-t="apagar" aria-pressed="false" disabled>Apagar</button>
+        </div>
+        <label class="campo">Pincel <input type="range" id="pincel" min="4" max="120" value="30"></label>
+        <div class="linha">
+          <button id="desfazer" disabled>Desfazer</button>
+          <button id="manchas" disabled>Remover manchas soltas</button>
+          <button id="espiar" disabled>Segurar: ver original</button>
+        </div>
+      </div>
+
+      <div class="corpo hidden" data-p="exportar">
+        <div class="linha">
+          <label class="campo">Tamanho
+            <select id="res"><option value="1280x720" selected>1280×720 (YouTube)</option><option value="1920x1080">1920×1080</option><option value="3840x2160">4K 3840×2160</option></select>
+          </label>
+          <label class="campo">Formato <select id="fmt"><option value="jpg" selected>JPG</option><option value="png">PNG</option></select></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="lim" checked> Limitar a 2 MB</label>
+        <label class="chk"><input type="checkbox" id="gchk"> Mostrar guia do contador de duração</label>
+        <div class="mini"><div class="mb"><canvas id="mini" width="336" height="189"></canvas><i>12:34</i></div><span>Prévia no tamanho de um celular.</span></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>Na primeira vez o navegador baixa o modelo de IA (cerca de 170 MB) e o guarda em cache. Fotos grandes podem levar alguns segundos.</footer>
 </main>
+<div id="aviso" class="hidden" role="status" aria-live="polite"></div>
 <script type="module" src="/main.js"></script>
 </body>
 </html>

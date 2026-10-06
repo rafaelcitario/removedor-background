@@ -2,16 +2,27 @@ import { removeBackground } from '@imgly/background-removal';
 
 const $ = (id) => document.getElementById(id);
 const drop = $('drop'), file = $('file'), erro = $('erro'), tela = $('tela');
-let nome = 'imagem', fundo = '';
-let base = null, edit = null, origCv = null, caixa = null; // recorte da IA, recorte editável, original, área do sujeito
+const FONTES = [['Anton', 400], ['League Spartan', 900], ['Bebas Neue', 400], ['Archivo Black', 400], ['Bangers', 400], ['Luckiest Guy', 400],
+  ['Montserrat', 900], ['Oswald', 700], ['Passion One', 900], ['Permanent Marker', 400], ['Poppins', 800], ['Russo One', 400]];
+const fnt = (f, tam) => `${f[1]} ${tam}px "${f[0]}", Impact, sans-serif`;
+
+let nome = 'imagem', fundo = '', tipoFundo = 'cor', imgFundo = null;
+let base = null, edit = null, origCv = null, caixa = null;       // recorte da IA, recorte editável, original, área do sujeito
 let acoes = [], tracado = null, ultimo = null, quadro = 0;
-let offX = 0, offY = 0, espelhado = false, tipoFundo = 'cor', imgFundo = null, interativo = false, txBox = null, tx = 0.5, ty = 0.82, arrasto = null;
-let ferramenta = '', espiando = false, T = { sx: 0, sy: 0, k: 1, dx: 0, dy: 0 };
+let offX = 0, offY = 0, espelhado = false, interativo = false, arrasto = null;
+let ferramenta = '', espiando = false, T = { sx: 0, sy: 0, k: 1, dx: 0, dy: 0, w: 0, h: 0 };
+let camadas = [], sel = 's', uid = 0, avisoT = 0;                // pilha de camadas: de baixo para cima
+
+const novoCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt) e.textContent = txt; return e; };
+const porId = (id) => camadas.find((l) => l.id === id);
+function aviso(t) { const a = $('aviso'); a.textContent = t; a.classList.remove('hidden'); clearTimeout(avisoT); avisoT = setTimeout(() => a.classList.add('hidden'), 4500); }
 
 // ---------- entrada ----------
 drop.onclick = () => file.click();
+$('novo').onclick = () => file.click();
 drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } };
-file.onchange = () => file.files[0] && usar(file.files[0]);
+file.onchange = () => { if (file.files[0]) usar(file.files[0]); file.value = ''; };
 ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', (e) => e.dataTransfer.files[0] && usar(e.dataTransfer.files[0]));
@@ -30,8 +41,10 @@ async function usar(f) {
   erro.textContent = '';
   if (!f.type.startsWith('image/')) { erro.textContent = 'Escolha um arquivo de imagem (JPG, PNG ou WebP).'; return; }
   nome = f.name.replace(/\.[^.]+$/, '') || 'imagem';
-  base = edit = origCv = caixa = null; acoes = []; offX = offY = 0; espelhado = false; $('espelhar').setAttribute('aria-pressed', 'false'); escolher('');
-  habilitar(false); $('painel').classList.remove('hidden'); desenhar(); status('Preparando…');
+  base = edit = origCv = caixa = null; acoes = []; offX = offY = 0; espelhado = false; $('espelhar').setAttribute('aria-pressed', 'false');
+  camadas = [{ id: 's', tipo: 'sujeito', vis: true }]; sel = 's'; escolher('');
+  $('entrada').classList.add('hidden'); $('app').classList.remove('hidden'); $('novo').classList.remove('hidden');
+  habilitar(false); aba('camadas'); listar(); props(); desenhar(); status('Preparando…');
 
   // qualidade máxima: modelo isnet (fp32), PNG sem perdas, imagem no tamanho original
   const cfg = {
@@ -46,14 +59,12 @@ async function usar(f) {
     let blob;
     try { blob = await removeBackground(f, navigator.gpu ? { ...cfg, device: 'gpu' } : cfg); }
     catch (e) { if (!navigator.gpu) throw e; blob = await removeBackground(f, cfg); }
-
     base = await createImageBitmap(blob);
     const orig = await createImageBitmap(f);
     origCv = novoCanvas(base.width, base.height);
     origCv.getContext('2d').drawImage(orig, 0, 0, base.width, base.height);
     edit = novoCanvas(base.width, base.height);
-    refazer();
-    caixa = achar(edit);
+    refazer(); caixa = achar(edit);
     habilitar(true); status(''); desenhar();
   } catch (e) {
     console.error(e);
@@ -62,7 +73,78 @@ async function usar(f) {
   }
 }
 
-function novoCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+// ---------- camadas ----------
+function addTexto(dados = {}) {
+  const l = { id: 't' + ++uid, tipo: 'texto', vis: true, txt: 'SEU TÍTULO', fonte: 0, tam: 16, cor: '#ffe600', borda: '#000000', bw: 16, x: 0.5, y: 0.82, box: null, ...dados };
+  return l;
+}
+function listar() {
+  const ul = $('lista'); ul.replaceChildren();
+  [...camadas].reverse().forEach((l) => {
+    const li = mk('li', 'item'); li.setAttribute('aria-current', l.id === sel);
+    const olho = mk('button', 'olho', l.vis ? '👁' : '◌'); olho.setAttribute('aria-pressed', l.vis); olho.setAttribute('aria-label', 'Mostrar ou ocultar camada');
+    olho.onclick = () => { l.vis = !l.vis; listar(); desenhar(); };
+    const rotulo = l.tipo === 'sujeito' ? 'Sujeito (recorte)' : 'T  ' + (l.txt.split('\n')[0].trim() || 'Texto vazio');
+    const nomeBtn = mk('button', 'nome', rotulo);
+    nomeBtn.onclick = () => selecionar(l.id);
+    li.append(olho, nomeBtn); ul.append(li);
+  });
+  const fx = mk('li', 'item fixo'); const b = mk('button', 'nome', 'Fundo'); b.onclick = () => aba('fundo'); fx.append(b); ul.append(fx);
+}
+function selecionar(id) { sel = id; listar(); props(); desenhar(); }
+function props() {
+  const l = porId(sel), t = l?.tipo === 'texto', i = camadas.indexOf(l);
+  $('p-sujeito').classList.toggle('hidden', t); $('p-texto').classList.toggle('hidden', !t);
+  $('subir').disabled = !l || i >= camadas.length - 1; $('descer').disabled = !l || i <= 0;
+  $('dup').disabled = $('del').disabled = !t;
+  if (!t) return;
+  $('txt').value = l.txt; $('tam').value = l.tam; $('tc').value = l.cor; $('tb').value = l.borda; $('bw').value = l.bw;
+  document.querySelectorAll('.chip').forEach((c, n) => c.setAttribute('aria-pressed', n === l.fonte));
+  const k = camadas.findIndex((c) => c.tipo === 'sujeito');
+  $('pAtras').setAttribute('aria-pressed', i < k); $('pFrente').setAttribute('aria-pressed', i > k);
+}
+function ordenar(d) {
+  const i = camadas.indexOf(porId(sel)), j = i + d;
+  if (j < 0 || j >= camadas.length) return;
+  [camadas[i], camadas[j]] = [camadas[j], camadas[i]]; listar(); props(); desenhar();
+}
+function posRel(frente) { // coloca o texto logo atrás ou logo à frente do sujeito
+  const l = porId(sel); if (l?.tipo !== 'texto') return;
+  camadas = camadas.filter((c) => c !== l);
+  const k = camadas.findIndex((c) => c.tipo === 'sujeito');
+  camadas.splice(frente ? k + 1 : k, 0, l); listar(); props(); desenhar();
+}
+$('addTxt').onclick = () => { const l = addTexto(); camadas.push(l); sel = l.id; aba('camadas'); listar(); props(); desenhar(); $('txt').focus(); };
+$('subir').onclick = () => ordenar(1);
+$('descer').onclick = () => ordenar(-1);
+$('dup').onclick = () => {
+  const o = porId(sel); if (o?.tipo !== 'texto') return;
+  const l = addTexto({ ...o, box: null, x: o.x + 0.03, y: o.y + 0.03 });
+  camadas.splice(camadas.indexOf(o) + 1, 0, l); selecionar(l.id);
+};
+$('del').onclick = () => { const l = porId(sel); if (l?.tipo !== 'texto') return; camadas = camadas.filter((c) => c !== l); selecionar('s'); };
+$('pAtras').onclick = () => posRel(false);
+$('pFrente').onclick = () => posRel(true);
+['txt', 'tam', 'tc', 'tb', 'bw'].forEach((id) => $(id).addEventListener('input', () => {
+  const l = porId(sel); if (l?.tipo !== 'texto') return;
+  Object.assign(l, { txt: $('txt').value, tam: +$('tam').value, cor: $('tc').value, borda: $('tb').value, bw: +$('bw').value });
+  listar(); desenhar();
+}));
+FONTES.forEach((f, i) => {
+  const b = mk('button', 'chip', f[0]); b.style.fontFamily = `"${f[0]}"`; b.style.fontWeight = f[1]; b.setAttribute('aria-pressed', 'false');
+  b.onclick = () => { const l = porId(sel); if (l?.tipo === 'texto') { l.fonte = i; props(); desenhar(); } };
+  $('fontes').append(b);
+});
+Promise.all(FONTES.map((f) => document.fonts.load(fnt(f, 32)))).then(desenhar);
+
+// ---------- abas ----------
+function aba(n) {
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', t.dataset.tab === n));
+  document.querySelectorAll('[data-p]').forEach((p) => p.classList.toggle('hidden', p.dataset.p !== n));
+  if (n !== 'retoque' && ferramenta) { escolher(''); if (edit) caixa = achar(edit); }
+  desenhar();
+}
+document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => aba(t.dataset.tab)));
 
 // ---------- retoque ----------
 const tmp = novoCanvas(1, 1);
@@ -117,7 +199,7 @@ function manchas() { // apaga ilhas pequenas e soltas, mantendo as partes grande
     area.push(a);
   }
   const limite = Math.max(...area) * 0.02;
-  const out = x.createImageData(w, h); let achou = 0; const marcadas = new Set();
+  const out = x.createImageData(w, h), marcadas = new Set();
   for (let i = 0; i < w * h; i++) {
     const l = lab[i];
     if (!l || area[l] >= limite) continue;
@@ -128,12 +210,10 @@ function manchas() { // apaga ilhas pequenas e soltas, mantendo as partes grande
       if (qx >= 0 && qx < w && qy >= 0 && qy < h) out.data[(qy * w + qx) * 4 + 3] = 255;
     }
   }
-  achou = marcadas.size;
-  if (!achou) { $('dica').textContent = 'Nenhuma mancha solta encontrada.'; return; }
+  if (!marcadas.size) { aviso('Nenhuma mancha solta encontrada.'); return; }
   const m = novoCanvas(w, h); m.getContext('2d').putImageData(out, 0, 0);
-  acoes.push({ m });
-  refazer(); desenhar(); habilitar(true);
-  $('dica').textContent = `${achou} mancha(s) solta(s) removida(s). Se algo importante sumiu, use “Desfazer”.`;
+  acoes.push({ m }); refazer(); desenhar(); habilitar(true);
+  aviso(`${marcadas.size} mancha(s) removida(s). Se algo importante sumiu, use “Desfazer”.`);
 }
 $('manchas').onclick = () => edit && manchas();
 
@@ -146,7 +226,8 @@ function escolher(t) {
 document.querySelectorAll('.tool').forEach((b) => (b.onclick = () => {
   const sai = ferramenta === b.dataset.t;
   escolher(sai ? '' : b.dataset.t);
-  if (sai && edit) { caixa = achar(edit); desenhar(); } // ao concluir o retoque, reenquadra no sujeito
+  if (sai && edit) { caixa = achar(edit); }
+  desenhar();
 }));
 $('desfazer').onclick = () => { acoes.pop(); refazer(); desenhar(); habilitar(true); };
 const ver = (v) => () => { espiando = v; desenhar(); };
@@ -155,8 +236,7 @@ $('espiar').addEventListener('pointerdown', ver(true));
 
 function ponto(e) {
   const r = tela.getBoundingClientRect(), esc = tela.width / r.width;
-  const cx = (e.clientX - r.left) * esc, cy = (e.clientY - r.top) * esc;
-  const lx = cx - T.dx;
+  const cx = (e.clientX - r.left) * esc, cy = (e.clientY - r.top) * esc, lx = cx - T.dx;
   return [T.sx + (espelhado ? T.w - lx : lx) / T.k, T.sy + (cy - T.dy) / T.k, (parseFloat($('pincel').value) / 2) * esc / T.k];
 }
 function marcar(e) {
@@ -168,25 +248,38 @@ function marcar(e) {
     if (!n) return;
     for (let i = 1; i <= n; i++) st(ultimo[0] + (dx * i) / n, ultimo[1] + (dy * i) / n);
   }
-  ultimo = [x, y];
-  if (!quadro) quadro = requestAnimationFrame(() => { quadro = 0; desenhar(); });
+  ultimo = [x, y]; agendar();
 }
+
+// ---------- interação no palco: selecionar, arrastar, pintar ----------
+const frac = (e) => { const r = tela.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+const caixaDe = (l) => (l.tipo === 'texto' ? l.box : edit ? { x: T.dx, y: T.dy, w: T.w, h: T.h } : null);
+const dentro = (b, x, y) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+
 tela.addEventListener('pointerdown', (e) => {
   if (!edit) return;
   tela.setPointerCapture(e.pointerId); interativo = true;
   if (ferramenta) { tracado = { pts: [] }; ultimo = null; marcar(e); return; }
-  const [fx, fy] = frac(e), px = fx * tela.width, py = fy * tela.height, b = txBox;
-  arrasto = b && px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h
-    ? { t: 'texto', fx, fy, a: tx, b: ty } : { t: 'sujeito', fx, fy, a: offX, b: offY };
+  const [fx, fy] = frac(e), px = fx * tela.width, py = fy * tela.height;
+  const atual = porId(sel);
+  let alvo = atual && atual.vis && dentro(caixaDe(atual), px, py) ? atual : null; // mantém a camada já selecionada
+  for (let i = camadas.length - 1; i >= 0 && !alvo; i--) if (camadas[i].vis && dentro(caixaDe(camadas[i]), px, py)) alvo = camadas[i];
+  if (!alvo) { interativo = false; return; }
+  if (alvo.id !== sel) { sel = alvo.id; listar(); props(); aba('camadas'); }
+  arrasto = alvo.tipo === 'texto' ? { l: alvo, fx, fy, a: alvo.x, b: alvo.y } : { l: alvo, fx, fy, a: offX, b: offY };
 });
 tela.addEventListener('pointermove', (e) => {
-  if (ferramenta) { // anel do pincel
-    const r = tela.getBoundingClientRect(), a = $('anel'), s = $('stage').getBoundingClientRect();
+  if (ferramenta) {
+    const a = $('anel'), s = $('stage').getBoundingClientRect();
     a.style.display = 'block'; a.style.width = a.style.height = $('pincel').value + 'px';
     a.style.left = e.clientX - s.left + 'px'; a.style.top = e.clientY - s.top + 'px';
   }
   if (tracado) marcar(e);
-  if (arrasto) mover(e);
+  if (arrasto) {
+    const [fx, fy] = frac(e), a = arrasto, nx = a.a + fx - a.fx, ny = a.b + fy - a.fy;
+    if (a.l.tipo === 'texto') { a.l.x = nx; a.l.y = ny; } else { offX = nx; offY = ny; }
+    agendar();
+  }
 });
 tela.addEventListener('pointerleave', () => ($('anel').style.display = 'none'));
 const fim = () => {
@@ -195,6 +288,7 @@ const fim = () => {
   if (interativo) { interativo = false; desenhar(); }
 };
 tela.addEventListener('pointerup', fim); tela.addEventListener('pointercancel', fim);
+function agendar() { if (!quadro) quadro = requestAnimationFrame(() => { quadro = 0; desenhar(); }); }
 
 // ---------- caixa do sujeito ----------
 function achar(src) {
@@ -225,9 +319,19 @@ function desenhar() {
   $('stage').classList.toggle('checker', tipoFundo === 'cor' && !fundo);
   ctx.clearRect(0, 0, W, H);
   pintarFundo(ctx, W, H, u, filtro);
-  if (edit) sujeito(ctx, W, H, u, filtro);
-  texto(ctx, W, H, u);
+  for (const l of camadas) {
+    if (!l.vis) continue;
+    if (l.tipo === 'sujeito') { if (edit) sujeito(ctx, W, H, u, filtro); } else texto(ctx, W, H, u, l);
+  }
   $('mini').getContext('2d').drawImage(tela, 0, 0, 336, 189);
+  destacar();
+}
+
+function destacar() { // moldura da camada selecionada (não entra na imagem exportada)
+  const el = $('selecao'), l = porId(sel), b = l && l.vis && !ferramenta ? caixaDe(l) : null;
+  if (!b) { el.style.display = 'none'; return; }
+  Object.assign(el.style, { display: 'block', left: (b.x / tela.width) * 100 + '%', top: (b.y / tela.height) * 100 + '%',
+    width: (b.w / tela.width) * 100 + '%', height: (b.h / tela.height) * 100 + '%' });
 }
 
 function pintarFundo(ctx, W, H, u, filtro) {
@@ -256,13 +360,13 @@ function sujeito(ctx, W, H, u, filtro) {
   const m = !cover && trim ? 0.06 : 0;
   const k0 = cover ? Math.max(W / s.w, H / s.h) : Math.min((W * (1 - 2 * m)) / s.w, (H * (1 - 2 * m)) / s.h);
   const k = k0 * (parseFloat($('esc').value) / 100), w = s.w * k, h = s.h * k;
-  T = { sx: s.x, sy: s.y, k, w, dx: (W - w) / 2 + offX * W, dy: (H - h) / 2 + offY * H };
+  T = { sx: s.x, sy: s.y, k, w, h, dx: (W - w) / 2 + offX * W, dy: (H - h) / 2 + offY * H };
 
-  const L = dim(CA, W, H), c = L.getContext('2d');
+  const L = dim(CA, W, H), c = L.getContext('2d'), fonte = espiando ? origCv : edit;
   c.clearRect(0, 0, W, H); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
   c.save();
-  if (espelhado) { c.translate(T.dx + w / 2, 0); c.scale(-1, 1); c.drawImage(espiando ? origCv : edit, s.x, s.y, s.w, s.h, -w / 2, T.dy, w, h); }
-  else c.drawImage(espiando ? origCv : edit, s.x, s.y, s.w, s.h, T.dx, T.dy, w, h);
+  if (espelhado) { c.translate(T.dx + w / 2, 0); c.scale(-1, 1); c.drawImage(fonte, s.x, s.y, s.w, s.h, -w / 2, T.dy, w, h); }
+  else c.drawImage(fonte, s.x, s.y, s.w, s.h, T.dx, T.dy, w, h);
   c.restore();
 
   const r = parseFloat($('cw').value) * u;
@@ -279,39 +383,32 @@ function sujeito(ctx, W, H, u, filtro) {
   ctx.restore();
 }
 
-function texto(ctx, W, H, u) {
-  txBox = null;
-  const linhas = $('txt').value.split('\n').filter((l) => l.trim());
+function texto(ctx, W, H, u, l) {
+  l.box = null;
+  const linhas = l.txt.split('\n').filter((s) => s.trim());
   if (!linhas.length) return;
-  const tam = (H * parseFloat($('tam').value)) / 100, lh = tam * 1.08;
+  const tam = (H * l.tam) / 100, lh = tam * 1.08;
   ctx.save();
-  ctx.font = `${tam}px ${$('fonte').value}, Impact, sans-serif`;
+  ctx.font = fnt(FONTES[l.fonte], tam);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  const x = tx * W, y0 = ty * H - ((linhas.length - 1) * lh) / 2;
+  const x = l.x * W, y0 = l.y * H - ((linhas.length - 1) * lh) / 2;
   let maior = 0;
-  linhas.forEach((l, i) => {
-    maior = Math.max(maior, ctx.measureText(l).width);
-    ctx.lineWidth = tam * 0.16; ctx.strokeStyle = $('tb').value;
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10 * u; ctx.shadowOffsetY = 4 * u;
-    ctx.strokeText(l, x, y0 + i * lh);
-    ctx.shadowColor = 'transparent'; ctx.fillStyle = $('tc').value; ctx.fillText(l, x, y0 + i * lh);
+  linhas.forEach((s, i) => {
+    maior = Math.max(maior, ctx.measureText(s).width);
+    if (l.bw > 0) {
+      ctx.lineWidth = (tam * l.bw) / 100; ctx.strokeStyle = l.borda;
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10 * u; ctx.shadowOffsetY = 4 * u;
+      ctx.strokeText(s, x, y0 + i * lh);
+    }
+    ctx.shadowColor = 'transparent'; ctx.fillStyle = l.cor; ctx.fillText(s, x, y0 + i * lh);
   });
   ctx.restore();
-  txBox = { x: x - maior / 2, y: y0 - lh / 2, w: maior, h: lh * linhas.length };
+  l.box = { x: x - maior / 2, y: y0 - lh / 2, w: maior, h: lh * linhas.length };
 }
 
-function agendar() { if (!quadro) quadro = requestAnimationFrame(() => { quadro = 0; desenhar(); }); }
-const frac = (e) => { const r = tela.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
-function mover(e) {
-  const [fx, fy] = frac(e), a = arrasto;
-  if (a.t === 'texto') { tx = a.a + fx - a.fx; ty = a.b + fy - a.fy; } else { offX = a.a + fx - a.fx; offY = a.b + fy - a.fy; }
-  agendar();
-}
-
-// ---------- novos controles ----------
-['esc', 'cw', 'cc', 'cs', 'g1', 'g2', 'txt', 'tam', 'tc', 'tb', 'br', 'ct', 'sa'].forEach((id) => $(id).addEventListener('input', desenhar));
-$('fonte').addEventListener('input', async () => { await document.fonts.load(`40px ${$('fonte').value}`); desenhar(); });
-document.fonts.load('40px Anton').then(desenhar);
+// ---------- controles do sujeito, fundo e cor ----------
+['esc', 'cw', 'cc', 'cs', 'g1', 'g2', 'br', 'ct', 'sa', 'res', 'ajuste'].forEach((id) => $(id).addEventListener('input', desenhar));
+$('trim').addEventListener('input', () => { if (edit) caixa = achar(edit); desenhar(); });
 document.querySelectorAll('[data-pos]').forEach((b) => (b.onclick = () => { offX = parseFloat(b.dataset.pos); offY = 0; desenhar(); }));
 $('espelhar').onclick = () => { espelhado = !espelhado; $('espelhar').setAttribute('aria-pressed', espelhado); desenhar(); };
 $('vida').onclick = () => { $('br').value = 105; $('ct').value = 112; $('sa').value = 130; desenhar(); };
@@ -322,20 +419,15 @@ $('bimg').onclick = () => $('fimg').click();
 $('fimg').onchange = async () => { if ($('fimg').files[0]) { imgFundo = await createImageBitmap($('fimg').files[0]); desenhar(); } };
 mostrarFundo();
 
-const reenquadrar = () => { if (edit) caixa = achar(edit); desenhar(); };
-$('res').addEventListener('change', desenhar);
-$('ajuste').addEventListener('change', desenhar);
-$('trim').addEventListener('change', reenquadrar);
-
 function setFundo(v, botao) {
   fundo = v;
   document.querySelectorAll('.sw').forEach((b) => b.setAttribute('aria-pressed', b === botao));
-  $('stage').classList.toggle('checker', !v);
   desenhar();
 }
 document.querySelectorAll('.sw').forEach((b) => (b.onclick = () => setFundo(b.dataset.bg, b)));
 $('cor').oninput = (e) => setFundo(e.target.value, null);
 
+// ---------- exportar ----------
 $('baixar').onclick = async () => {
   espiando = false; interativo = false; desenhar();
   const jpg = $('fmt').value === 'jpg', max = 2 * 1024 * 1024;
@@ -352,7 +444,7 @@ $('baixar').onclick = async () => {
   a.download = `${nome}-thumbnail-${tela.width}x${tela.height}.${jpg ? 'jpg' : 'png'}`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   const mb = (blob.size / 1048576).toFixed(2).replace('.', ',');
-  $('dica').textContent = blob.size > max
+  aviso(blob.size > max
     ? `Arquivo com ${mb} MB: passa do limite de 2 MB do YouTube. Use 1280×720 em JPG com “Limitar a 2 MB”.`
-    : `Arquivo salvo: ${mb} MB${jpg ? ` (qualidade ${Math.round(q * 100)}%)` : ''}.`;
+    : `Arquivo salvo: ${mb} MB${jpg ? ` (qualidade ${Math.round(q * 100)}%)` : ''}.`);
 };
