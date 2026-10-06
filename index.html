@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Removedor de fundo 16:9</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
   :root { --bg:#eef1f5; --ink:#151a22; --muted:#5d6675; --line:#d3d9e2; --panel:#fff;
           --accent:#2447e0; --accent-ink:#fff; --err:#b3261e; --c1:#fff; --c2:#d9dde4; }
@@ -48,13 +49,23 @@
   #anel { position:absolute; pointer-events:none; display:none; border:2px solid #fff; border-radius:50%;
           box-shadow:0 0 0 1px #000; transform:translate(-50%,-50%); }
   #dica { margin:10px 0 0; color:var(--muted); font-size:.9rem; min-height:1.4em; }
+  canvas { cursor:grab; }
+  .grupos details { margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px; }
+  summary { cursor:pointer; font-weight:600; }
+  .grupos .bar { margin:12px 0 4px; }
+  textarea { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px; width:260px; }
+  #guia { position:absolute; right:1.2%; bottom:2.5%; width:13%; height:8%; border:2px dashed #ff4d4d; background:#ff000022; pointer-events:none; }
+  .mini { display:flex; align-items:center; gap:14px; margin-top:14px; color:var(--muted); font-size:.85rem; }
+  .mb { position:relative; width:168px; height:94px; flex:none; border-radius:8px; overflow:hidden; }
+  .mb canvas { width:100%; height:100%; display:block; cursor:default; background:#222; }
+  .mb i { position:absolute; right:4px; bottom:4px; background:#000c; color:#fff; font:600 11px/1 system-ui; padding:2px 4px; border-radius:3px; }
   footer { margin-top:32px; color:var(--muted); font-size:.85rem; max-width:70ch; }
 </style>
 </head>
 <body>
 <main>
   <h1>Removedor de fundo 16:9</h1>
-  <p class="sub">Tudo roda no seu navegador: a foto não é enviada a nenhum servidor. O recorte sai em PNG de alta qualidade, num quadro 16:9.</p>
+  <p class="sub">Tudo roda no seu navegador: a foto não é enviada a nenhum servidor. Monte a thumbnail em 16:9: recorte, contorno, fundo e texto.</p>
 
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher imagem">
     <strong>Arraste uma imagem aqui, cole com Ctrl+V ou clique para escolher</strong>
@@ -66,43 +77,67 @@
   <section id="painel" class="hidden">
     <div class="stage checker" id="stage">
       <canvas id="tela" aria-label="Prévia 16:9"></canvas>
+      <div id="guia" class="hidden"></div>
       <div id="anel"></div>
       <div id="status">Preparando…</div>
     </div>
     <div class="bar">
-      <label>Resolução
-        <select id="res">
-          <option value="3840x2160" selected>4K (3840×2160)</option>
-          <option value="2560x1440">QHD (2560×1440)</option>
-          <option value="1920x1080">Full HD (1920×1080)</option>
-        </select>
+      <label>Tamanho
+        <select id="res"><option value="1280x720" selected>1280×720 (YouTube)</option><option value="1920x1080">1920×1080</option><option value="3840x2160">4K 3840×2160</option></select>
       </label>
-      <label>Enquadramento
-        <select id="ajuste">
-          <option value="contain" selected>Mostrar inteiro</option>
-          <option value="cover">Preencher o quadro</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="trim" checked> Centralizar no sujeito</label>
+      <label>Formato <select id="fmt"><option value="jpg" selected>JPG</option><option value="png">PNG</option></select></label>
+      <label><input type="checkbox" id="lim" checked> Limitar a 2 MB</label>
+      <label><input type="checkbox" id="gchk"> Guia do contador</label>
+      <button class="primary" id="baixar" disabled>Baixar thumbnail</button>
     </div>
-    <div class="bar">
-      <div class="swatches" role="group" aria-label="Cor de fundo">
-        <button class="sw none" data-bg="" aria-pressed="true" title="Transparente"></button>
-        <button class="sw" data-bg="#ffffff" style="background:#fff" aria-pressed="false" title="Branco"></button>
-        <button class="sw" data-bg="#000000" style="background:#000" aria-pressed="false" title="Preto"></button>
-        <input type="color" id="cor" value="#2447e0" aria-label="Cor personalizada">
-      </div>
-      <button class="primary" id="baixar" disabled>Baixar PNG</button>
-    </div>
-    <div class="bar" role="group" aria-label="Retoque">
-      <button class="tool" data-t="restaurar" aria-pressed="false" disabled>Restaurar parte</button>
-      <button class="tool" data-t="apagar" aria-pressed="false" disabled>Apagar sobra</button>
-      <label>Pincel <input type="range" id="pincel" min="4" max="120" value="30"></label>
-      <button id="desfazer" disabled>Desfazer</button>
-      <button id="manchas" disabled>Remover manchas soltas</button>
-      <button id="espiar" disabled>Segurar para ver o original</button>
-    </div>
+    <div class="mini"><div class="mb"><canvas id="mini" width="336" height="189"></canvas><i>12:34</i></div>
+      <span>Prévia no tamanho de um celular. Arraste o sujeito ou o texto direto na imagem.</span></div>
     <p id="dica">Retoque: use “Restaurar parte” para pintar de volta o que foi cortado sem querer e “Apagar sobra” para tirar o que ficou.</p>
+
+    <div class="grupos">
+      <details open><summary>Sujeito e contorno</summary><div class="bar">
+        <label>Tamanho <input type="range" id="esc" min="30" max="220" value="100"></label>
+        <button data-pos="-0.22">Esquerda</button><button data-pos="0">Centro</button><button data-pos="0.22">Direita</button>
+        <button id="espelhar" aria-pressed="false">Espelhar</button>
+        <label><input type="checkbox" id="trim" checked> Centralizar no sujeito</label>
+        <label>Enquadramento <select id="ajuste"><option value="contain" selected>Inteiro</option><option value="cover">Preencher</option></select></label>
+        <label>Contorno <input type="range" id="cw" min="0" max="40" value="10"></label>
+        <input type="color" id="cc" value="#ffffff" aria-label="Cor do contorno">
+        <label><input type="checkbox" id="cs" checked> Sombra</label>
+      </div></details>
+      <details open><summary>Fundo</summary><div class="bar">
+        <label>Tipo <select id="tfundo"><option value="cor">Cor ou transparente</option><option value="degrade">Degradê</option><option value="imagem">Imagem</option><option value="desfocado">Foto original desfocada</option></select></label>
+        <div class="swatches" data-f="cor" role="group" aria-label="Cor de fundo">
+          <button class="sw none" data-bg="" aria-pressed="true" title="Transparente"></button>
+          <button class="sw" data-bg="#ffffff" style="background:#fff" aria-pressed="false" title="Branco"></button>
+          <button class="sw" data-bg="#000000" style="background:#000" aria-pressed="false" title="Preto"></button>
+          <input type="color" id="cor" value="#2447e0" aria-label="Cor personalizada">
+        </div>
+        <span class="swatches hidden" data-f="degrade"><input type="color" id="g1" value="#ff2d55" aria-label="Cor inicial"><input type="color" id="g2" value="#2447e0" aria-label="Cor final"></span>
+        <span class="hidden" data-f="imagem"><button id="bimg">Escolher imagem</button><input type="file" id="fimg" accept="image/*" class="hidden"></span>
+      </div></details>
+      <details><summary>Texto</summary><div class="bar">
+        <textarea id="txt" rows="2" placeholder="Título da thumbnail (Enter quebra a linha)"></textarea>
+        <label>Fonte <select id="fonte"><option value="Anton" selected>Anton</option><option value="'Bebas Neue'">Bebas Neue</option><option value="'Archivo Black'">Archivo Black</option></select></label>
+        <label>Tamanho <input type="range" id="tam" min="6" max="40" value="16"></label>
+        <label>Texto <input type="color" id="tc" value="#ffe600"></label>
+        <label>Borda <input type="color" id="tb" value="#000000"></label>
+      </div></details>
+      <details><summary>Cor e brilho</summary><div class="bar">
+        <label>Brilho <input type="range" id="br" min="50" max="150" value="100"></label>
+        <label>Contraste <input type="range" id="ct" min="50" max="150" value="100"></label>
+        <label>Saturação <input type="range" id="sa" min="50" max="180" value="100"></label>
+        <button id="vida">Dar mais vida</button>
+      </div></details>
+      <details><summary>Retoque do recorte</summary><div class="bar" role="group" aria-label="Retoque">
+        <button class="tool" data-t="restaurar" aria-pressed="false" disabled>Restaurar parte</button>
+        <button class="tool" data-t="apagar" aria-pressed="false" disabled>Apagar sobra</button>
+        <label>Pincel <input type="range" id="pincel" min="4" max="120" value="30"></label>
+        <button id="desfazer" disabled>Desfazer</button>
+        <button id="manchas" disabled>Remover manchas soltas</button>
+        <button id="espiar" disabled>Segurar para ver o original</button>
+      </div></details>
+    </div>
   </section>
 
   <footer>Na primeira vez o navegador baixa o modelo de IA (cerca de 170 MB) e o guarda em cache; depois disso abre bem mais rápido. Fotos grandes podem levar alguns segundos, dependendo do seu aparelho.</footer>
