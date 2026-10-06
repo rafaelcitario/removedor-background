@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Removedor de fundo 16:9</title>
+<style>
+  :root { --bg:#eef1f5; --ink:#151a22; --muted:#5d6675; --line:#d3d9e2; --panel:#fff;
+          --accent:#2447e0; --accent-ink:#fff; --err:#b3261e; --c1:#fff; --c2:#d9dde4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --ink:#eef1f6; --muted:#98a2b3; --line:#2b323d; --panel:#1a1f27;
+            --accent:#6f8bff; --accent-ink:#0b1020; --err:#ff8a80; --c1:#2a303a; --c2:#20252d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:40px 20px 64px; }
+  h1 { font-size:clamp(1.8rem,5vw,2.6rem); line-height:1.1; margin:0 0 8px; letter-spacing:-.02em; }
+  .sub { margin:0 0 24px; color:var(--muted); max-width:56ch; }
+  .drop { display:grid; gap:4px; text-align:center; padding:28px 20px; border:2px dashed var(--line);
+          border-radius:14px; background:var(--panel); cursor:pointer; transition:border-color .15s; }
+  .drop:hover,.drop.over,.drop:focus-visible { border-color:var(--accent); outline:none; }
+  .drop span { color:var(--muted); font-size:.9rem; }
+  .hidden { display:none !important; }
+  #painel { margin-top:20px; }
+  .stage { position:relative; aspect-ratio:16/9; width:100%; border-radius:12px; overflow:hidden;
+           border:1px solid var(--line); background:var(--panel); }
+  .stage.checker { background:repeating-conic-gradient(var(--c1) 0% 25%,var(--c2) 0% 50%) 0 0/20px 20px; }
+  canvas { width:100%; height:100%; display:block; }
+  #status { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:16px;
+            font-weight:600; background:color-mix(in srgb,var(--bg) 82%,transparent); }
+  .bar { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin-top:16px; }
+  .bar label { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:.9rem; }
+  select,button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line);
+                  border-radius:8px; padding:8px 12px; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .swatches { display:flex; gap:8px; align-items:center; }
+  .sw { width:28px; height:28px; border-radius:50%; border:2px solid var(--line); padding:0; }
+  .sw[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+  .sw.none { background:repeating-conic-gradient(#fff 0% 25%,#cfd4dc 0% 50%) 0 0/10px 10px; }
+  input[type=color] { width:36px; height:30px; padding:0; border:1px solid var(--line); border-radius:8px; background:none; }
+  #erro { color:var(--err); min-height:1.5em; margin:12px 0 0; }
+  footer { margin-top:32px; color:var(--muted); font-size:.85rem; max-width:70ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Removedor de fundo 16:9</h1>
+  <p class="sub">Tudo roda no seu navegador: a foto não é enviada a nenhum servidor. O recorte sai em PNG de alta qualidade, num quadro 16:9.</p>
+
+  <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher imagem">
+    <strong>Arraste uma imagem aqui, cole com Ctrl+V ou clique para escolher</strong>
+    <span>JPG, PNG ou WebP. A imagem é usada no tamanho original, sem reduzir.</span>
+  </div>
+  <input type="file" id="file" accept="image/*" class="hidden">
+  <p id="erro" role="alert"></p>
+
+  <section id="painel" class="hidden">
+    <div class="stage checker" id="stage">
+      <canvas id="tela" aria-label="Prévia 16:9"></canvas>
+      <div id="status">Preparando…</div>
+    </div>
+    <div class="bar">
+      <label>Resolução
+        <select id="res">
+          <option value="3840x2160" selected>4K (3840×2160)</option>
+          <option value="2560x1440">QHD (2560×1440)</option>
+          <option value="1920x1080">Full HD (1920×1080)</option>
+        </select>
+      </label>
+      <label>Enquadramento
+        <select id="ajuste">
+          <option value="contain" selected>Mostrar inteiro</option>
+          <option value="cover">Preencher o quadro</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="trim" checked> Centralizar no sujeito</label>
+    </div>
+    <div class="bar">
+      <div class="swatches" role="group" aria-label="Cor de fundo">
+        <button class="sw none" data-bg="" aria-pressed="true" title="Transparente"></button>
+        <button class="sw" data-bg="#ffffff" style="background:#fff" aria-pressed="false" title="Branco"></button>
+        <button class="sw" data-bg="#000000" style="background:#000" aria-pressed="false" title="Preto"></button>
+        <input type="color" id="cor" value="#2447e0" aria-label="Cor personalizada">
+      </div>
+      <button class="primary" id="baixar" disabled>Baixar PNG</button>
+    </div>
+  </section>
+
+  <footer>Na primeira vez o navegador baixa o modelo de IA (cerca de 170 MB) e o guarda em cache; depois disso abre bem mais rápido. Fotos grandes podem levar alguns segundos, dependendo do seu aparelho.</footer>
+</main>
+<script type="module" src="/main.js"></script>
+</body>
+</html>

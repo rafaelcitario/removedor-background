@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: removedor-de-fundo
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
