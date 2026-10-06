@@ -1,4 +1,4 @@
-import removeBackground from '@imgly/background-removal';
+import { removeBackground } from '@imgly/background-removal';
 
 const $ = (id) => document.getElementById(id);
 const drop = $('drop'), file = $('file'), erro = $('erro'), tela = $('tela');
