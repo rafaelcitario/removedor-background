@@ -291,10 +291,21 @@
       <div class="corpo hidden" data-p="exportar">
         <div class="linha">
           <label class="campo">Tamanho
-            <select id="res"><option value="1280x720" selected>1280×720 (YouTube)</option><option value="1920x1080">1920×1080</option><option value="3840x2160">4K 3840×2160</option></select>
+            <select id="res">
+              <option value="1280x720" selected>1280×720 (YouTube)</option>
+              <option value="1920x1080">1920×1080 (1080p)</option>
+              <option value="2560x1440">2560×1440 (1440p)</option>
+              <option value="3840x2160">3840×2160 (4K)</option>
+              <option value="5120x2880">5120×2880 (5K)</option>
+              <option value="7680x4320">7680×4320 (8K)</option>
+            </select>
           </label>
           <label class="campo">Formato <select id="fmt"><option value="jpg" selected>JPG</option><option value="png">PNG</option></select></label>
         </div>
+        <label class="campo">Upscaling da foto
+          <select id="up"><option value="0" selected>Automático</option><option value="1">Desligado</option><option value="2">2×</option><option value="4">4×</option><option value="5">5×</option><option value="10">10×</option></select>
+        </label>
+        <p class="dica">Amplia o recorte (reamostragem Lanczos) ao exportar. O app limita ao que o tamanho escolhido exige, até 8K, e à memória do aparelho.</p>
         <label class="chk"><input type="checkbox" id="lim" checked> Limitar a 2 MB</label>
         <label class="chk"><input type="checkbox" id="gchk"> Mostrar guia do contador de duração</label>
         <div class="mini"><div class="mb"><canvas id="mini" width="336" height="189"></canvas><i>12:34</i></div><span>Prévia no tamanho de um celular.</span></div>

@@ -11,6 +11,7 @@ let base = null, edit = null, origCv = null, caixa = null;       // recorte da I
 let acoes = [], tracado = null, ultimo = null, quadro = 0;
 let offX = 0, offY = 0, espelhado = false, interativo = false, arrasto = null;
 let ferramenta = '', espiando = false, T = { sx: 0, sy: 0, k: 1, dx: 0, dy: 0, w: 0, h: 0 };
+let up = null, exportando = false;                                  // upscaling e modo de exportação
 let camadas = [], sel = 's', uid = 0, avisoT = 0;                // pilha de camadas: de baixo para cima
 
 const novoCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
@@ -355,7 +356,7 @@ const CA = novoCanvas(1, 1), CB = novoCanvas(1, 1);
 const dim = (c, W, H) => { if (c.width !== W || c.height !== H) { c.width = W; c.height = H; } return c; };
 
 function desenhar() {
-  const [W, H] = (interativo ? '1280x720' : $('res').value).split('x').map(Number);
+  const [W, H] = (exportando ? $('res').value : '1280x720').split('x').map(Number);
   dim(tela, W, H);
   const ctx = tela.getContext('2d'), u = W / 1280;
   const filtro = `brightness(${$('br').value}%) contrast(${$('ct').value}%) saturate(${$('sa').value}%)`;
@@ -398,19 +399,25 @@ function sombra(ctx, u) {
   ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 18 * u; ctx.shadowOffsetY = 6 * u;
 }
 
-function sujeito(ctx, W, H, u, filtro) {
+function layoutSujeito(W, H) {
   const trim = $('trim').checked, cover = $('ajuste').value === 'cover';
   const s = trim && caixa ? caixa : { x: 0, y: 0, w: edit.width, h: edit.height };
   const m = !cover && trim ? 0.06 : 0;
   const k0 = cover ? Math.max(W / s.w, H / s.h) : Math.min((W * (1 - 2 * m)) / s.w, (H * (1 - 2 * m)) / s.h);
-  const k = k0 * (parseFloat($('esc').value) / 100), w = s.w * k, h = s.h * k;
+  const k = k0 * (parseFloat($('esc').value) / 100);
+  return { s, k, w: s.w * k, h: s.h * k };
+}
+
+function sujeito(ctx, W, H, u, filtro) {
+  const { s, k, w, h } = layoutSujeito(W, H);
   T = { sx: s.x, sy: s.y, k, w, h, dx: (W - w) / 2 + offX * W, dy: (H - h) / 2 + offY * H };
 
   const L = dim(CA, W, H), c = L.getContext('2d'), fonte = espiando ? origCv : edit;
+  const fs = up ? [up.cv, 0, 0, up.cv.width, up.cv.height] : [fonte, s.x, s.y, s.w, s.h]; // recorte ampliado, se houver
   c.clearRect(0, 0, W, H); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
   c.save();
-  if (espelhado) { c.translate(T.dx + w / 2, 0); c.scale(-1, 1); c.drawImage(fonte, s.x, s.y, s.w, s.h, -w / 2, T.dy, w, h); }
-  else c.drawImage(fonte, s.x, s.y, s.w, s.h, T.dx, T.dy, w, h);
+  if (espelhado) { c.translate(T.dx + w / 2, 0); c.scale(-1, 1); c.drawImage(...fs, -w / 2, T.dy, w, h); }
+  else c.drawImage(...fs, T.dx, T.dy, w, h);
   c.restore();
 
   const r = parseFloat($('cw').value) * u;
@@ -478,24 +485,95 @@ function setFundo(v, botao) {
 document.querySelectorAll('.sw').forEach((b) => (b.onclick = () => setFundo(b.dataset.bg, b)));
 $('cor').oninput = (e) => setFundo(e.target.value, null);
 
+// ---------- upscaling (Lanczos-3 em Web Worker) ----------
+const WORKER = `(${function () {
+  self.onmessage = (e) => {
+    const { d, w, h, W, H } = e.data, px = new Uint8ClampedArray(d);
+    const lz = (x) => { x = Math.abs(x); if (x < 1e-6) return 1; if (x >= 3) return 0; const p = Math.PI * x; return (3 * Math.sin(p) * Math.sin(p / 3)) / (p * p); };
+    const taps = (n, N) => { // 6 pesos por pixel de saída
+      const idx = new Int32Array(N * 6), wt = new Float32Array(N * 6), sc = n / N;
+      for (let o = 0; o < N; o++) {
+        const c = (o + 0.5) * sc - 0.5, f = Math.floor(c) - 2; let sum = 0;
+        for (let t = 0; t < 6; t++) { const v = lz(f + t - c); wt[o * 6 + t] = v; sum += v; idx[o * 6 + t] = Math.min(n - 1, Math.max(0, f + t)); }
+        for (let t = 0; t < 6; t++) wt[o * 6 + t] /= sum;
+      }
+      return [idx, wt];
+    };
+    const [ix, wx] = taps(w, W), [iy, wy] = taps(h, H);
+    const src = new Float32Array(w * h * 4); // alfa pré-multiplicado, para não manchar as bordas
+    for (let i = 0; i < w * h; i++) { const a = px[i * 4 + 3] / 255; src[i * 4] = px[i * 4] * a; src[i * 4 + 1] = px[i * 4 + 1] * a; src[i * 4 + 2] = px[i * 4 + 2] * a; src[i * 4 + 3] = px[i * 4 + 3]; }
+    const tmp = new Float32Array(W * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < W; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let t = 0; t < 6; t++) { const j = (y * w + ix[x * 6 + t]) * 4, k = wx[x * 6 + t]; r += src[j] * k; g += src[j + 1] * k; b += src[j + 2] * k; a += src[j + 3] * k; }
+      const o = (y * W + x) * 4; tmp[o] = r; tmp[o + 1] = g; tmp[o + 2] = b; tmp[o + 3] = a;
+    }
+    const out = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let t = 0; t < 6; t++) { const j = (iy[y * 6 + t] * W + x) * 4, k = wy[y * 6 + t]; r += tmp[j] * k; g += tmp[j + 1] * k; b += tmp[j + 2] * k; a += tmp[j + 3] * k; }
+      a = Math.min(255, Math.max(0, a)); const m = a > 0 ? 255 / a : 0, o = (y * W + x) * 4;
+      out[o] = r * m; out[o + 1] = g * m; out[o + 2] = b * m; out[o + 3] = a;
+    }
+    self.postMessage(out.buffer, [out.buffer]);
+  };
+}})()`;
+
+function ampliar(cv, S) {
+  const w = cv.width, h = cv.height, W = Math.round(w * S), H = Math.round(h * S);
+  const img = cv.getContext('2d').getImageData(0, 0, w, h);
+  return new Promise((ok, falha) => {
+    const url = URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })), wk = new Worker(url);
+    const fim = () => { wk.terminate(); URL.revokeObjectURL(url); };
+    wk.onmessage = (e) => { fim(); const o = novoCanvas(W, H); o.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(e.data), W, H), 0, 0); ok(o); };
+    wk.onerror = (e) => { fim(); falha(e); };
+    wk.postMessage({ d: img.data.buffer, w, h, W, H }, [img.data.buffer]);
+  });
+}
+
+const pausa = () => new Promise((r) => setTimeout(r, 40));
+const limitePx = () => (matchMedia('(pointer:coarse)').matches ? 16.7e6 : 40e6); // celulares têm menos memória
+function cabe(W, H) { // o navegador consegue criar um canvas deste tamanho?
+  try { const c = novoCanvas(W, H), x = c.getContext('2d'); x.fillStyle = '#f00'; x.fillRect(W - 1, H - 1, 1, 1); return x.getImageData(W - 1, H - 1, 1, 1).data[0] === 255; }
+  catch { return false; }
+}
+async function prepararUp(W, H, f) {
+  const { s, k } = layoutSujeito(W, H);
+  const S = Math.min(f === 0 ? Infinity : f, Math.max(1, k), Math.sqrt(limitePx() / (s.w * s.h))); // nunca além do necessário
+  if (S < 1.05) { aviso(k <= 1.05 ? 'A foto já tem resolução suficiente para esse tamanho: upscaling dispensado.' : 'Sem memória para ampliar a foto neste aparelho.'); return null; }
+  status(`Ampliando ${S.toFixed(1).replace('.', ',')}× — pode levar alguns segundos…`); await pausa();
+  const c = novoCanvas(s.w, s.h); c.getContext('2d').drawImage(edit, s.x, s.y, s.w, s.h, 0, 0, s.w, s.h);
+  return { cv: await ampliar(c, S), S };
+}
+
 // ---------- exportar ----------
 $('baixar').onclick = async () => {
-  espiando = false; interativo = false; desenhar();
-  const jpg = $('fmt').value === 'jpg', max = 2 * 1024 * 1024;
-  let alvo = tela;
-  if (jpg) { // JPG não tem transparência: assenta sobre branco
-    alvo = novoCanvas(tela.width, tela.height);
-    const c = alvo.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, alvo.width, alvo.height); c.drawImage(tela, 0, 0);
-  }
-  const gerar = (q) => new Promise((r) => alvo.toBlob(r, jpg ? 'image/jpeg' : 'image/png', q));
-  let q = 0.95, blob = await gerar(q);
-  if (jpg && $('lim').checked) while (blob.size > max && q > 0.4) { q -= 0.05; blob = await gerar(q); }
+  espiando = false;
+  const [W, H] = $('res').value.split('x').map(Number), jpg = $('fmt').value === 'jpg', max = 2 * 1024 * 1024;
+  if (W * H > 16.7e6 && !cabe(W, H)) { aviso('Este aparelho não consegue gerar imagens tão grandes. Escolha uma resolução menor (4K costuma funcionar).'); return; }
+  habilitar(false); status('Gerando a imagem…'); await pausa();
+  let blob, q = 0.95, fator = null;
+  try {
+    const f = +$('up').value;
+    if (edit && f !== 1) up = await prepararUp(W, H, f);
+    fator = up?.S; exportando = true; desenhar();
+    let alvo = tela;
+    if (jpg) { // JPG não tem transparência: assenta sobre branco
+      alvo = novoCanvas(W, H);
+      const c = alvo.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.drawImage(tela, 0, 0);
+    }
+    const gerar = (qq) => new Promise((r) => alvo.toBlob(r, jpg ? 'image/jpeg' : 'image/png', qq));
+    blob = await gerar(q);
+    if (jpg && $('lim').checked) while (blob.size > max && q > 0.4) { q -= 0.05; blob = await gerar(q); }
+  } catch (e) { console.error(e); aviso('Não foi possível gerar esta resolução. Tente uma menor.'); }
+  finally { up = null; exportando = false; habilitar(true); status(''); desenhar(); }
+  if (!blob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${nome}-thumbnail-${tela.width}x${tela.height}.${jpg ? 'jpg' : 'png'}`;
+  a.download = `${nome}-thumbnail-${W}x${H}.${jpg ? 'jpg' : 'png'}`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   const mb = (blob.size / 1048576).toFixed(2).replace('.', ',');
-  aviso(blob.size > max
+  aviso((blob.size > max
     ? `Arquivo com ${mb} MB: passa do limite de 2 MB do YouTube. Use 1280×720 em JPG com “Limitar a 2 MB”.`
-    : `Arquivo salvo: ${mb} MB${jpg ? ` (qualidade ${Math.round(q * 100)}%)` : ''}.`);
+    : `Arquivo salvo: ${mb} MB${jpg ? ` (qualidade ${Math.round(q * 100)}%)` : ''}.`) + (fator ? ` Upscaling ${fator.toFixed(1).replace('.', ',')}× aplicado.` : ''));
 };
