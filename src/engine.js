@@ -1,4 +1,5 @@
 import { removeBackground } from '@imgly/background-removal'
+import { alfaDe, lumDe, alfaRefinado } from './refino.js'
 
 export const FONTES = [['Anton', 400], ['League Spartan', 900], ['Bebas Neue', 400], ['Archivo Black', 400], ['Bangers', 400], ['Luckiest Guy', 400],
   ['Montserrat', 900], ['Oswald', 700], ['Passion One', 900], ['Permanent Marker', 400], ['Poppins', 800], ['Russo One', 400]]
@@ -85,6 +86,7 @@ const novoDoc = () => ({
   fundo: { tipo: 'cor', cor: '', g1: '#111111', g2: '#8a8a8a', img: null, blur: 22 },
   sujeito: { trim: true, ajuste: 'contain', cw: 10, cb: 0, cc: '#ffffff', cs: true },
   cor: { br: 100, ct: 100, sa: 100 },
+  recorte: { on: true, sens: 12, borda: 4, transp: false }, // refino automático do recorte
   exp: { res: '1280x720', fmt: 'jpg', lim: true, up: '0' },
 })
 
@@ -93,6 +95,7 @@ export class Engine {
     this.doc = novoDoc(); this.subs = new Set(); this.q = 0; this.uid = 0
     this.tela = null; this.mini = null; this.busy = ''; this.erro = ''; this.nome = 'imagem'; this.temImagem = false; this.onAviso = () => {}
     this.base = this.edit = this.origCv = this.caixa = null; this.acoes = []
+    this.ref = null; this.cacheAg = null; this.refinando = false; this.pendente = false; this.tR = 0
     this.T = null; this.up = null; this.exportando = false; this.tracado = null; this.ultimo = null; this.arrasto = null; this.anel = null
     this.CA = cv(1, 1); this.CB = cv(1, 1); this.tmp = cv(1, 1)
   }
@@ -105,7 +108,7 @@ export class Engine {
   async carregar(f) {
     const d = this.doc
     this.erro = ''; this.nome = f.name.replace(/\.[^.]+$/, '') || 'imagem'
-    this.base = this.edit = this.origCv = this.caixa = null; this.acoes = []
+    this.base = this.edit = this.origCv = this.caixa = null; this.acoes = []; this.ref = null
     d.layers = [{ id: 's', tipo: 'sujeito', vis: true, t: T0() }]; d.sel = 's'; d.tool = ''; d.aba = 'camadas'
     this.temImagem = true; this.busy = 'Preparando…'; this.emit()
     // qualidade máxima: modelo isnet (fp32), PNG sem perdas, imagem no tamanho original
@@ -117,16 +120,46 @@ export class Engine {
       let blob
       try { blob = await removeBackground(f, navigator.gpu ? { ...cfg, device: 'gpu' } : cfg) }
       catch (e) { if (!navigator.gpu) throw e; blob = await removeBackground(f, cfg) }
-      this.base = await createImageBitmap(blob)
-      const orig = await createImageBitmap(f)
-      this.origCv = cv(this.base.width, this.base.height); this.origCv.getContext('2d').drawImage(orig, 0, 0, this.base.width, this.base.height)
-      this.edit = cv(this.base.width, this.base.height)
-      this.refazer(); this.caixa = achar(this.edit)
+      const raw = await createImageBitmap(blob), orig = await createImageBitmap(f)
+      this.origCv = cv(raw.width, raw.height); this.origCv.getContext('2d').drawImage(orig, 0, 0, raw.width, raw.height)
+      this.edit = cv(raw.width, raw.height)
+      this.prepararRef(raw)
+      await this.refinar()
     } catch (e) {
       console.error(e); this.erro = 'Não foi possível remover o fundo desta imagem. Tente outra imagem ou recarregue a página.'; this.temImagem = false
     }
     this.busy = ''; this.emit()
   }
+
+  // ---------- refino do recorte (inspirado no matting do withoutBG) ----------
+  prepararRef(raw) { // guarda o alfa bruto da IA e a luminância da foto, em resolução de trabalho
+    const R = Math.min(Math.max(raw.width, raw.height), matchMedia('(pointer:coarse)').matches ? 1280 : 2048), k = R / Math.max(raw.width, raw.height)
+    const w = Math.max(1, Math.round(raw.width * k)), h = Math.max(1, Math.round(raw.height * k))
+    const c = cv(w, h), x = c.getContext('2d', { willReadFrequently: true })
+    x.drawImage(raw, 0, 0, w, h); const a0 = alfaDe(x.getImageData(0, 0, w, h))
+    x.clearRect(0, 0, w, h); x.drawImage(this.origCv, 0, 0, w, h); const lum = lumDe(x.getImageData(0, 0, w, h))
+    this.ref = { w, h, a0, lum }; this.cacheAg = null
+  }
+  async refinar() {
+    if (!this.ref) return
+    if (this.refinando) { this.pendente = true; return }
+    this.refinando = true
+    try {
+      do {
+        this.pendente = false; this.busy = 'Refinando o recorte…'; this.emit(); await pausa()
+        const { w, h } = this.ref, p = this.doc.recorte
+        const a = p.on ? alfaRefinado(this.ref, p, this) : this.ref.a0
+        const m = cv(w, h), mc = m.getContext('2d'), id = mc.createImageData(w, h)
+        for (let i = 0; i < w * h; i++) id.data[i * 4 + 3] = Math.round(a[i] * 255)
+        mc.putImageData(id, 0, 0)
+        const out = cv(this.origCv.width, this.origCv.height), oc = out.getContext('2d') // cores da foto original + alfa refinado
+        oc.drawImage(this.origCv, 0, 0); oc.globalCompositeOperation = 'destination-in'; oc.imageSmoothingQuality = 'high'
+        oc.drawImage(m, 0, 0, out.width, out.height)
+        this.base = out; this.refazer(); this.caixa = achar(this.edit)
+      } while (this.pendente)
+    } finally { this.refinando = false; this.busy = ''; this.emit() }
+  }
+  setRecorte(p) { Object.assign(this.doc.recorte, p); this.emit(); clearTimeout(this.tR); this.tR = setTimeout(() => this.refinar(), 350) }
 
   // ---------- camadas ----------
   get L() { return this.porId(this.doc.sel) }

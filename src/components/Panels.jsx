@@ -155,9 +155,21 @@ function PAjustes({ eng }) {
 }
 
 function PRetoque({ eng }) {
-  const d = eng.doc, ok = !!eng.edit, espiar = (v) => eng.mut((x) => { x.espiando = v })
+  const d = eng.doc, ok = !!eng.edit, rc = d.recorte, setR = (x) => eng.setRecorte(x), espiar = (v) => eng.mut((x) => { x.espiando = v })
   return (
     <div className="grid gap-5">
+      <div className="grid gap-4 rounded-lg border p-3">
+        <Titulo>Refino automático do recorte</Titulo>
+        <Linha label="Refinar bordas e remover fantasmas"><Switch checked={rc.on} disabled={!ok} onCheckedChange={(v) => setR({ on: v })} aria-label="Refinar recorte" /></Linha>
+        {rc.on && (
+          <>
+            <Rng label="Sensibilidade" v={rc.sens} min={2} max={40} on={(v) => setR({ sens: v })} fmt={(v) => v + '%'} />
+            <Rng label="Precisão da borda" v={rc.borda} min={1} max={10} on={(v) => setR({ borda: v })} />
+            <Linha label="Preservar transparência"><Switch checked={rc.transp} onCheckedChange={(v) => setR({ transp: v })} aria-label="Preservar transparência" /></Linha>
+            <p className="text-xs text-muted-foreground">Partes do sujeito que saíram semitransparentes (fantasmas) viram sólidas. Se ainda sobrar fantasma, aumente a sensibilidade; se estiver incluindo fundo demais, diminua. Use “Preservar transparência” para vidro, véus e fumaça.</p>
+          </>
+        )}
+      </div>
       <p className="text-sm text-muted-foreground">Corrija o recorte: pinte de volta o que foi cortado sem querer ou apague o que sobrou. Depois, clique em “Concluir retoque”.</p>
       <ToggleGroup type="single" variant="outline" className="grid grid-cols-2" value={d.tool} onValueChange={(v) => eng.setTool(v || '')} aria-label="Ferramenta de retoque">
         <ToggleGroupItem value="restaurar" disabled={!ok}>Restaurar</ToggleGroupItem>
